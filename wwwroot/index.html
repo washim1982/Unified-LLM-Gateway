@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Universal AI Gateway - .NET 8 Orchestrator</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h2>UnifiedGateway</h2>
+          <span class="badge badge-net">.NET 8 Minimal API</span>
+        </div>
+      </div>
+
+      <nav class="nav-links">
+        <button class="nav-btn active" data-tab="apps">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          Applications
+        </button>
+        <button class="nav-btn" data-tab="generator">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          API Generator & Test
+        </button>
+        <button class="nav-btn" data-tab="universal">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          Universal Router
+        </button>
+        <button class="nav-btn" data-tab="telemetry">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          Telemetry & Metrics
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="sts-card">
+          <div class="sts-header">
+            <span class="sts-dot" id="sts-indicator"></span>
+            <span class="sts-title">AWS STS Status</span>
+          </div>
+          <div class="sts-detail" id="sts-detail-text">Loading credentials...</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Top Header Bar -->
+      <header class="topbar">
+        <div class="page-title-area">
+          <h1 id="page-heading">Application Registry</h1>
+          <p id="page-subheading">Manage per-application AI routing endpoints and system prompts</p>
+        </div>
+        <div class="topbar-actions">
+          <button class="btn btn-outline" id="btn-refresh-status">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            Refresh
+          </button>
+          <button class="btn btn-primary" id="btn-open-create-modal">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New Application
+          </button>
+        </div>
+      </header>
+
+      <!-- TAB 1: Applications Registry -->
+      <section class="tab-pane active" id="pane-apps">
+        <div class="app-grid" id="apps-container">
+          <!-- Dynamic App Cards rendered here -->
+        </div>
+      </section>
+
+      <!-- TAB 2: API Generator & Interactive Tester -->
+      <section class="tab-pane" id="pane-generator">
+        <div class="generator-layout">
+          <div class="card generator-config">
+            <h3>1. Select Application</h3>
+            <div class="form-group">
+              <label>Target Application</label>
+              <select id="gen-app-select" class="form-control"></select>
+            </div>
+
+            <div class="app-info-panel" id="gen-app-details">
+              <!-- Selected app summary -->
+            </div>
+
+            <h3>2. Generated Endpoint</h3>
+            <div class="endpoint-display">
+              <span class="http-method">POST</span>
+              <span class="endpoint-path" id="gen-endpoint-url">/gateway/app-id/invoke</span>
+            </div>
+
+            <div class="code-tabs">
+              <div class="code-tab-header">
+                <button class="code-tab-btn active" data-lang="curl">cURL</button>
+                <button class="code-tab-btn" data-lang="csharp">C# .NET</button>
+                <button class="code-tab-btn" data-lang="python">Python</button>
+              </div>
+              <pre class="code-block"><code id="gen-code-snippet"></code></pre>
+            </div>
+          </div>
+
+          <div class="card interactive-tester">
+            <h3>3. Live Invocation Console</h3>
+            <div class="form-group">
+              <label>Prompt / User Input</label>
+              <textarea id="test-input" class="form-control" rows="4" placeholder="Enter test query (e.g., 'Draft a welcome email for new enterprise customers')...">Explain quantum computing in one sentence.</textarea>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label>Session ID (Optional)</label>
+                <input type="text" id="test-session" class="form-control" placeholder="sess_123">
+              </div>
+              <div class="form-group">
+                <label>Temperature Override</label>
+                <input type="number" id="test-temp" class="form-control" step="0.1" min="0" max="1" placeholder="Default">
+              </div>
+            </div>
+
+            <button class="btn btn-primary btn-block" id="btn-run-app-test">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Execute Invocations
+            </button>
+
+            <div class="response-area" id="app-test-response-area" style="display:none;">
+              <div class="response-meta">
+                <span class="meta-item">Latency: <strong id="res-latency">-</strong></span>
+                <span class="meta-item">Tokens: <strong id="res-tokens">-</strong></span>
+                <span class="meta-item">Provider: <strong id="res-provider">-</strong></span>
+                <span class="meta-item">Fallback: <strong id="res-fallback">No</strong></span>
+              </div>
+              <div class="response-output-box">
+                <label>Output Response:</label>
+                <div class="response-text" id="res-output"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: Universal Router Direct Tester -->
+      <section class="tab-pane" id="pane-universal">
+        <div class="universal-layout">
+          <div class="card">
+            <h3>Universal Request Normalizer</h3>
+            <p class="subtitle">Directly dispatch a normalized universal request to any Bedrock or Local model.</p>
+            
+            <div class="form-row">
+              <div class="form-group">
+                <label>Backend Provider</label>
+                <select id="univ-provider" class="form-control">
+                  <option value="bedrock">AWS Bedrock (STS Role)</option>
+                  <option value="local">Local Model (Ollama / LM Studio)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Model Identifier</label>
+                <select id="univ-model" class="form-control">
+                  <!-- Populated dynamically -->
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>System Prompt</label>
+              <textarea id="univ-system" class="form-control" rows="2" placeholder="System instructions...">You are a high-speed AI assistant.</textarea>
+            </div>
+
+            <div class="form-group">
+              <label>User Input</label>
+              <textarea id="univ-input" class="form-control" rows="4" placeholder="Type prompt...">Write a short haiku about cloud gateways.</textarea>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label>Temperature (0.0 - 1.0)</label>
+                <input type="number" id="univ-temp" class="form-control" value="0.7" step="0.1" min="0" max="1">
+              </div>
+              <div class="form-group">
+                <label>Max Tokens</label>
+                <input type="number" id="univ-tokens" class="form-control" value="1024">
+              </div>
+            </div>
+
+            <button class="btn btn-primary" id="btn-run-univ-test">Dispatch Universal Request</button>
+          </div>
+
+          <div class="card">
+            <h3>Execution Output & Telemetry</h3>
+            <div class="response-area" id="univ-response-area">
+              <p class="placeholder-text">Execute a request to view normalized output, token metrics, and latency statistics.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 4: Telemetry & Metrics -->
+      <section class="tab-pane" id="pane-telemetry">
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <span class="kpi-label">Total Invocations</span>
+            <span class="kpi-value" id="kpi-total-req">0</span>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-label">Total Tokens Processed</span>
+            <span class="kpi-value" id="kpi-total-tokens">0</span>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-label">Avg Response Latency</span>
+            <span class="kpi-value" id="kpi-avg-latency">0 ms</span>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-label">Failovers & Fallbacks</span>
+            <span class="kpi-value" id="kpi-fallbacks">0</span>
+          </div>
+        </div>
+
+        <div class="card table-card">
+          <h3>Recent Invocations Telemetry</h3>
+          <div class="table-responsive">
+            <table class="table" id="logs-table">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>App / Route</th>
+                  <th>Provider</th>
+                  <th>Model</th>
+                  <th>Latency</th>
+                  <th>Tokens</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="logs-table-body">
+                <!-- Logs rendered dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Create Application Modal -->
+  <div class="modal-backdrop" id="create-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Register New Application</h3>
+        <button class="close-btn" id="btn-close-create-modal">&times;</button>
+      </div>
+      <form id="create-app-form">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>App Identifier (Slug)</label>
+            <input type="text" id="modal-app-id" class="form-control" required placeholder="e.g. invoice-analyzer">
+          </div>
+
+          <div class="form-group">
+            <label>Application Name</label>
+            <input type="text" id="modal-app-name" class="form-control" required placeholder="e.g. Invoice Analyzer Service">
+          </div>
+
+          <div class="form-group">
+            <label>Description</label>
+            <input type="text" id="modal-app-desc" class="form-control" placeholder="Brief purpose of this application">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Primary Provider</label>
+              <select id="modal-app-provider" class="form-control">
+                <option value="bedrock">AWS Bedrock</option>
+                <option value="local">Local Model</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Primary Model</label>
+              <select id="modal-app-model" class="form-control"></select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>System Prompt</label>
+            <textarea id="modal-app-prompt" class="form-control" rows="3" placeholder="Enter default system instructions for this app..."></textarea>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Temperature</label>
+              <input type="number" id="modal-app-temp" class="form-control" value="0.7" step="0.1" min="0" max="1">
+            </div>
+            <div class="form-group">
+              <label>Max Tokens</label>
+              <input type="number" id="modal-app-tokens" class="form-control" value="2048">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Fallback Provider (Optional)</label>
+              <select id="modal-app-fallback-provider" class="form-control">
+                <option value="">None</option>
+                <option value="bedrock">AWS Bedrock</option>
+                <option value="local">Local Model</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Fallback Model</label>
+              <input type="text" id="modal-app-fallback-model" class="form-control" placeholder="e.g. ollama/llama3 or claude-3-haiku">
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" id="btn-cancel-create">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create & Generate API</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Key Created Modal -->
+  <div class="modal-backdrop" id="key-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Application & API Key Created</h3>
+        <button class="close-btn" id="btn-close-key-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning">
+          <strong>Important:</strong> Copy your API key now. For security, you will not be able to view it again.
+        </div>
+        <div class="form-group">
+          <label>Generated Endpoint</label>
+          <input type="text" id="key-modal-endpoint" class="form-control" readonly>
+        </div>
+        <div class="form-group">
+          <label>API Key (X-API-Key)</label>
+          <div class="key-copy-group">
+            <input type="text" id="key-modal-key" class="form-control code-font" readonly>
+            <button class="btn btn-primary" id="btn-copy-key">Copy</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" id="btn-done-key">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

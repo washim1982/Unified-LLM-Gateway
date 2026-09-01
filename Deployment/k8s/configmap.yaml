@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+  namespace: ai-platform
+data:
+  AWS_REGION: "us-east-1"
+  AWS_ASSUME_ROLE_ARN: "arn:aws:iam::123456789012:role/BedrockGatewayExecutionRole"
+  LOCAL_OLLAMA_URL: "http://ollama-service.ai-platform.svc.cluster.local:11434"
+  LOCAL_LMSTUDIO_URL: "http://lmstudio-service.ai-platform.svc.cluster.local:1234"

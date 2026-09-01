@@ -1,0 +1,114 @@
+using Microsoft.AspNetCore.Mvc;
+using UnifiedGateway.Models;
+using UnifiedGateway.Services;
+
+namespace UnifiedGateway.Endpoints;
+
+public static class DashboardEndpoints
+{
+    public static void MapDashboardEndpoints(this IEndpointRouteBuilder app)
+    {
+        var group = app.MapGroup("/api")
+            .WithTags("Dashboard & Management");
+
+        // List applications
+        group.MapGet("/apps", async (IApplicationRegistryService registry, CancellationToken ct) =>
+        {
+            var apps = await registry.GetAllAppsAsync(ct);
+            return Results.Ok(apps);
+        })
+        .WithName("ListApplications");
+
+        // Get single application
+        group.MapGet("/apps/{appId}", async (string appId, IApplicationRegistryService registry, CancellationToken ct) =>
+        {
+            var appConfig = await registry.GetAppAsync(appId, ct);
+            return appConfig is not null ? Results.Ok(appConfig) : Results.NotFound(new { error = "Application not found" });
+        })
+        .WithName("GetApplication");
+
+        // Create new application (generates endpoint and API key)
+        group.MapPost("/apps", async ([FromBody] CreateAppRequest request, IApplicationRegistryService registry, CancellationToken ct) =>
+        {
+            try
+            {
+                var created = await registry.CreateAppAsync(request, ct);
+                return Results.Created($"/api/apps/{created.App.AppId}", created);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        })
+        .WithName("CreateApplication");
+
+        // Update application (increments version and updates prompt/config)
+        group.MapPut("/apps/{appId}", async (string appId, [FromBody] UpdateAppRequest request, IApplicationRegistryService registry, CancellationToken ct) =>
+        {
+            var updated = await registry.UpdateAppAsync(appId, request, ct);
+            return updated is not null ? Results.Ok(updated) : Results.NotFound(new { error = "Application not found" });
+        })
+        .WithName("UpdateApplication");
+
+        // Delete application
+        group.MapDelete("/apps/{appId}", async (string appId, IApplicationRegistryService registry, CancellationToken ct) =>
+        {
+            var deleted = await registry.DeleteAppAsync(appId, ct);
+            return deleted ? Results.NoContent() : Results.NotFound(new { error = "Application not found" });
+        })
+        .WithName("DeleteApplication");
+
+        // Test application invocation from dashboard
+        group.MapPost("/apps/{appId}/test", async (
+            string appId,
+            [FromBody] InvokeAppRequest request,
+            IModelRouter router,
+            CancellationToken ct) =>
+        {
+            var result = await router.RouteAppRequestAsync(appId, request, ct);
+            return Results.Ok(result);
+        })
+        .WithName("TestApplication");
+
+        // Real-time metrics and analytics
+        group.MapGet("/metrics", async (IApplicationRegistryService registry, CancellationToken ct) =>
+        {
+            var summary = await registry.GetMetricsSummaryAsync(ct);
+            return Results.Ok(summary);
+        })
+        .WithName("GetMetrics");
+
+        // List supported and available models across Bedrock and Local
+        group.MapGet("/models", async (ILocalModelService localService, CancellationToken ct) =>
+        {
+            var bedrockModels = new[]
+            {
+                new { id = "anthropic.claude-3-5-sonnet-20240620-v1:0", name = "Claude 3.5 Sonnet", provider = "bedrock", contextWindow = 200000 },
+                new { id = "anthropic.claude-3-haiku-20240307-v1:0", name = "Claude 3 Haiku", provider = "bedrock", contextWindow = 200000 },
+                new { id = "anthropic.claude-3-opus-20240229-v1:0", name = "Claude 3 Opus", provider = "bedrock", contextWindow = 200000 },
+                new { id = "meta.llama3-70b-instruct-v1:0", name = "Meta Llama 3 70B", provider = "bedrock", contextWindow = 8192 },
+                new { id = "meta.llama3-8b-instruct-v1:0", name = "Meta Llama 3 8B", provider = "bedrock", contextWindow = 8192 },
+                new { id = "mistral.mistral-7b-instruct-v0:2", name = "Mistral 7B Instruct", provider = "bedrock", contextWindow = 32000 },
+                new { id = "mistral.mixtral-8x7b-instruct-v0:1", name = "Mixtral 8x7B", provider = "bedrock", contextWindow = 32000 },
+                new { id = "amazon.titan-text-express-v1", name = "Amazon Titan Text Express", provider = "bedrock", contextWindow = 8000 }
+            };
+
+            var localModels = await localService.ListAvailableLocalModelsAsync(ct);
+
+            return Results.Ok(new
+            {
+                bedrock = bedrockModels,
+                local = localModels
+            });
+        })
+        .WithName("GetModels");
+
+        // Get STS Credential status
+        group.MapGet("/credentials/status", async (ISTSService stsService, CancellationToken ct) =>
+        {
+            var status = await stsService.GetStatusAsync(ct);
+            return Results.Ok(status);
+        })
+        .WithName("GetCredentialStatus");
+    }
+}
