@@ -54,3 +54,4 @@ C:\Users\wasim\workspace\Projects\Unified-LLM-Gateway\obj\Debug\net8.0\UnifiedGa
 C:\Users\wasim\workspace\Projects\Unified-LLM-Gateway\obj\Debug\net8.0\ref\UnifiedGateway.dll
 C:\Users\wasim\workspace\Projects\Unified-LLM-Gateway\bin\Debug\net8.0\data\dev\app_registry_dev.json
 C:\Users\wasim\workspace\Projects\Unified-LLM-Gateway\obj\Debug\net8.0\UnifiedGateway.sourcelink.json
+C:\Users\wasim\workspace\Projects\Unified-LLM-Gateway\obj\Debug\net8.0\staticwebassets.upToDateCheck.txt

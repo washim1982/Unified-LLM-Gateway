@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("UnifiedGateway.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+7b22d5333ef9c920dce9be7b9a038a7f3059f270")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c14597b7bf6004a47e3fd555e5ab84878a08308c")]
 [assembly: System.Reflection.AssemblyProductAttribute("UnifiedGateway.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("UnifiedGateway.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
