@@ -25,6 +25,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const createAppForm = document.getElementById('create-app-form');
   const btnRefreshStatus = document.getElementById('btn-refresh-status');
 
+  // Guardrails Elements
+  const guardrailsForm = document.getElementById('guardrails-form');
+  const btnRunGrTest = document.getElementById('btn-run-gr-test');
+
   // Generator & Tester
   const genAppSelect = document.getElementById('gen-app-select');
   const genAppDetails = document.getElementById('gen-app-details');
@@ -51,6 +55,8 @@ document.addEventListener('DOMContentLoaded', () => {
       updatePageHeader(tab);
       if (tab === 'telemetry') {
         loadMetrics();
+      } else if (tab === 'guardrails') {
+        loadGuardrailConfig();
       }
     });
   });
@@ -58,6 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function updatePageHeader(tab) {
     const titles = {
       apps: { title: 'Application Registry', sub: 'Manage per-application AI routing endpoints and system prompts' },
+      guardrails: { title: 'Guardrails & Data Safety', sub: 'Admin-level PCI, PII, Secrets, and Prompt Injection policies for all requests' },
       generator: { title: 'API Generator & Test Console', sub: 'Generated REST endpoints with sample SDK code and interactive sandbox' },
       universal: { title: 'Universal Router', sub: 'Direct normalized schema invocation across Bedrock and Local engines' },
       telemetry: { title: 'Telemetry & Observability', sub: 'Real-time throughput, token analytics, latency percentiles, and request logs' }
@@ -87,6 +94,155 @@ document.addEventListener('DOMContentLoaded', () => {
       stsDetail.textContent = 'Service Unreachable';
     }
   }
+
+  // Guardrail Configuration & Sandbox
+  async function loadGuardrailConfig() {
+    try {
+      const res = await fetch('/api/guardrails/config');
+      if (!res.ok) return;
+      const config = await res.json();
+
+      document.getElementById('gr-enabled').value = config.enabled ? "true" : "false";
+      document.getElementById('gr-mode').value = config.mode !== undefined ? config.mode : 0;
+
+      // PCI
+      document.getElementById('gr-pci-cc').checked = config.pci?.maskCreditCards ?? true;
+      document.getElementById('gr-pci-iban').checked = config.pci?.maskIban ?? true;
+      document.getElementById('gr-pci-cvv').checked = config.pci?.maskCvv ?? true;
+
+      // PII
+      document.getElementById('gr-pii-ssn').checked = config.pii?.maskSsn ?? true;
+      document.getElementById('gr-pii-email').checked = config.pii?.maskEmails ?? true;
+      document.getElementById('gr-pii-phone').checked = config.pii?.maskPhoneNumbers ?? true;
+      document.getElementById('gr-pii-passport').checked = config.pii?.maskPassports ?? true;
+
+      // Secrets
+      document.getElementById('gr-sec-aws').checked = config.secrets?.maskAwsKeys ?? true;
+      document.getElementById('gr-sec-privkey').checked = config.secrets?.maskPrivateKeys ?? true;
+      document.getElementById('gr-sec-jwt').checked = config.secrets?.maskJwtTokens ?? true;
+      document.getElementById('gr-sec-keys').checked = config.secrets?.maskGenericApiKeys ?? true;
+
+      // Injection
+      document.getElementById('gr-inj-override').checked = config.promptInjection?.blockSystemOverrides ?? true;
+      document.getElementById('gr-inj-jailbreak').checked = config.promptInjection?.blockJailbreaks ?? true;
+    } catch (e) {
+      console.error('Failed to load guardrail config', e);
+    }
+  }
+
+  guardrailsForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const payload = {
+      enabled: document.getElementById('gr-enabled').value === "true",
+      mode: parseInt(document.getElementById('gr-mode').value),
+      pci: {
+        enabled: true,
+        maskCreditCards: document.getElementById('gr-pci-cc').checked,
+        maskIban: document.getElementById('gr-pci-iban').checked,
+        maskCvv: document.getElementById('gr-pci-cvv').checked
+      },
+      pii: {
+        enabled: true,
+        maskSsn: document.getElementById('gr-pii-ssn').checked,
+        maskEmails: document.getElementById('gr-pii-email').checked,
+        maskPhoneNumbers: document.getElementById('gr-pii-phone').checked,
+        maskPassports: document.getElementById('gr-pii-passport').checked
+      },
+      secrets: {
+        enabled: true,
+        maskAwsKeys: document.getElementById('gr-sec-aws').checked,
+        maskPrivateKeys: document.getElementById('gr-sec-privkey').checked,
+        maskJwtTokens: document.getElementById('gr-sec-jwt').checked,
+        maskGenericApiKeys: document.getElementById('gr-sec-keys').checked
+      },
+      promptInjection: {
+        enabled: true,
+        blockSystemOverrides: document.getElementById('gr-inj-override').checked,
+        blockJailbreaks: document.getElementById('gr-inj-jailbreak').checked
+      },
+      bedrockGuardrails: {
+        enabled: false,
+        guardrailIdentifier: "",
+        guardrailVersion: "DRAFT"
+      }
+    };
+
+    try {
+      const res = await fetch('/api/guardrails/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        alert('Enterprise Guardrail Policy saved successfully!');
+      } else {
+        alert('Failed to save Guardrail configuration.');
+      }
+    } catch (err) {
+      alert(`Save error: ${err.message}`);
+    }
+  });
+
+  // Guardrail Sandbox Run
+  btnRunGrTest.addEventListener('click', async () => {
+    const input = document.getElementById('gr-test-input').value;
+    const modeVal = document.getElementById('gr-test-mode').value;
+
+    btnRunGrTest.disabled = true;
+    btnRunGrTest.textContent = 'Inspecting...';
+
+    const resultBox = document.getElementById('gr-sandbox-result');
+    resultBox.style.display = 'block';
+
+    try {
+      const payload = {
+        input: input,
+        mode: modeVal !== "" ? parseInt(modeVal) : undefined
+      };
+
+      const res = await fetch('/api/guardrails/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+
+      document.getElementById('gr-res-action').textContent = data.actionTaken.toUpperCase();
+      document.getElementById('gr-res-count').textContent = data.violations?.length || 0;
+      document.getElementById('gr-res-risk').textContent = `${(data.riskScore * 100).toFixed(0)}%`;
+      document.getElementById('gr-res-lat').textContent = `${data.latencyMs} ms`;
+
+      // Render violations pills
+      const vContainer = document.getElementById('gr-res-violations-container');
+      vContainer.innerHTML = '';
+
+      if (data.violations && data.violations.length > 0) {
+        data.violations.forEach(v => {
+          const pill = document.createElement('div');
+          pill.className = `violation-pill severity-${v.severity}`;
+          pill.innerHTML = `
+            <div>
+              <span class="violation-title">[${v.category}] ${escapeHtml(v.ruleName)} (${v.severity})</span>
+              <div class="violation-desc">${escapeHtml(v.description)} - Snippet: <code>${escapeHtml(v.detectedSnippet || '')}</code></div>
+            </div>
+          `;
+          vContainer.appendChild(pill);
+        });
+      } else {
+        vContainer.innerHTML = `<div style="color:var(--accent-green); font-size:13px;">No security policy violations detected in this text snippet.</div>`;
+      }
+
+      document.getElementById('gr-res-sanitized').textContent = data.sanitizedInput || '(None)';
+    } catch (e) {
+      document.getElementById('gr-res-sanitized').textContent = `Inspection error: ${e.message}`;
+    } finally {
+      btnRunGrTest.disabled = false;
+      btnRunGrTest.textContent = 'Analyze & Sanitize';
+    }
+  });
 
   // Fetch Models
   async function loadModels() {
@@ -291,7 +447,7 @@ print(resp.json()["output"])`;
 
     const respArea = document.getElementById('app-test-response-area');
     respArea.style.display = 'block';
-    document.getElementById('res-output').textContent = 'Processing request across routing layer...';
+    document.getElementById('res-output').textContent = 'Processing request across guardrails & routing layer...';
 
     try {
       const payload = {
@@ -314,7 +470,7 @@ print(resp.json()["output"])`;
       document.getElementById('res-fallback').textContent = data.fallback_used ? 'YES' : 'NO';
 
       if (data.error) {
-        document.getElementById('res-output').innerHTML = `<span style="color:var(--accent-red);">Error [${data.error.code}]: ${escapeHtml(data.error.message)}</span>`;
+        document.getElementById('res-output').innerHTML = `<span style="color:var(--accent-red);">Error [${data.error.code}]: ${escapeHtml(data.error.message)} ${data.error.details ? '<br/><small>' + escapeHtml(data.error.details) + '</small>' : ''}</span>`;
       } else {
         document.getElementById('res-output').textContent = data.output || '(Empty response)';
       }
@@ -336,7 +492,7 @@ print(resp.json()["output"])`;
     const maxTokens = parseInt(document.getElementById('univ-tokens').value) || 1024;
 
     const respArea = document.getElementById('univ-response-area');
-    respArea.innerHTML = '<p>Dispatching universal request...</p>';
+    respArea.innerHTML = '<p>Dispatching universal request through guardrails...</p>';
     btnRunUnivTest.disabled = true;
 
     try {
@@ -382,26 +538,31 @@ print(resp.json()["output"])`;
       const data = await res.json();
 
       document.getElementById('kpi-total-req').textContent = data.totalRequests || 0;
+      document.getElementById('kpi-gr-redacted').textContent = data.guardrailRedactedCount || 0;
+      document.getElementById('kpi-gr-blocked').textContent = data.guardrailBlockedCount || 0;
       document.getElementById('kpi-total-tokens').textContent = (data.totalTokens || 0).toLocaleString();
-      document.getElementById('kpi-avg-latency').textContent = `${data.avgLatencyMs || 0} ms`;
-      document.getElementById('kpi-fallbacks').textContent = data.fallbackCount || 0;
 
       const tbody = document.getElementById('logs-table-body');
       tbody.innerHTML = '';
 
       if (!data.recentLogs || data.recentLogs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--text-muted);">No invocation logs recorded yet.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--text-muted);">No invocation logs recorded yet.</td></tr>';
         return;
       }
 
       data.recentLogs.forEach(log => {
         const tr = document.createElement('tr');
         const time = new Date(log.timestamp).toLocaleTimeString();
+        const grBadge = log.guardrailAction === 'Redacted' ? '<span class="badge" style="background:#3b82f6; color:#fff;">Redacted</span>' :
+                        log.guardrailAction === 'Blocked' ? '<span class="badge" style="background:#ef4444; color:#fff;">Blocked</span>' :
+                        '<span class="badge" style="background:rgba(255,255,255,0.1); color:var(--text-muted);">Passed</span>';
+
         tr.innerHTML = `
           <td>${time}</td>
           <td><code>${escapeHtml(log.appId || 'universal')}</code></td>
           <td>${escapeHtml(log.provider || '-')}</td>
           <td style="font-family:var(--font-mono); font-size:11px;">${escapeHtml(log.model || '-')}</td>
+          <td>${grBadge}</td>
           <td>${log.latencyMs} ms</td>
           <td>${log.totalTokens}</td>
           <td>${log.success ? '<span style="color:var(--accent-green)">Success</span>' : '<span style="color:var(--accent-red)">Error</span>'} ${log.fallbackUsed ? '<span class="badge" style="background:#f59e0b; color:#000;">Fallback</span>' : ''}</td>
@@ -478,6 +639,7 @@ print(resp.json()["output"])`;
     loadStsStatus();
     loadApps();
     loadMetrics();
+    loadGuardrailConfig();
   });
 
   // Global window functions for cards
@@ -511,4 +673,5 @@ print(resp.json()["output"])`;
   loadStsStatus();
   loadModels();
   loadApps();
+  loadGuardrailConfig();
 });

@@ -11,6 +11,7 @@ public class GatewayOptions
     public LocalProvidersOptions LocalProviders { get; set; } = new();
     public SecurityOptions Security { get; set; } = new();
     public StorageOptions Storage { get; set; } = new();
+    public GuardrailOptions Guardrails { get; set; } = new();
 }
 
 public class AwsOptions

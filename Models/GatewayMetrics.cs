@@ -35,6 +35,12 @@ public record RequestLogEntry
     [JsonPropertyName("fallbackUsed")]
     public bool FallbackUsed { get; init; }
 
+    [JsonPropertyName("guardrailAction")]
+    public string GuardrailAction { get; init; } = "None"; // "Passed", "Redacted", "Blocked", "Audited"
+
+    [JsonPropertyName("guardrailViolations")]
+    public List<string> GuardrailViolations { get; init; } = [];
+
     [JsonPropertyName("timestamp")]
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
 
@@ -55,6 +61,15 @@ public class GatewayMetricsSummary
 
     [JsonPropertyName("fallbackCount")]
     public long FallbackCount { get; set; }
+
+    [JsonPropertyName("guardrailEvaluatedCount")]
+    public long GuardrailEvaluatedCount { get; set; }
+
+    [JsonPropertyName("guardrailRedactedCount")]
+    public long GuardrailRedactedCount { get; set; }
+
+    [JsonPropertyName("guardrailBlockedCount")]
+    public long GuardrailBlockedCount { get; set; }
 
     [JsonPropertyName("totalTokens")]
     public long TotalTokens { get; set; }
@@ -91,4 +106,7 @@ public class AppMetricStats
 
     [JsonPropertyName("errorCount")]
     public long ErrorCount { get; set; }
+
+    [JsonPropertyName("guardrailBlockedCount")]
+    public long GuardrailBlockedCount { get; set; }
 }

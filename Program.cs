@@ -49,6 +49,7 @@ builder.Services.AddHttpClient("LlamaCppClient", client =>
 
 // 4. Core Gateway Services Registration
 builder.Services.AddSingleton<ISecurityService, SecurityService>();
+builder.Services.AddSingleton<IGuardrailService, GuardrailService>();
 builder.Services.AddSingleton<ISTSService, STSService>();
 builder.Services.AddSingleton<IBedrockService, BedrockService>();
 builder.Services.AddSingleton<ILocalModelService, LocalModelService>();
@@ -88,7 +89,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title = "Universal AI LLM Gateway API",
         Version = "v1",
-        Description = "Enterprise-grade Unified LLM Gateway (.NET 8) with dynamic Bedrock STS assume-role, local model failover, and automated application routing."
+        Description = "Enterprise-grade Unified LLM Gateway (.NET 8) with Enterprise Guardrails (PII/PCI/Secrets), dynamic Bedrock STS assume-role, local model failover, and automated application routing."
     });
 
     c.AddSecurityDefinition("ApiKey", new OpenApiSecurityScheme
@@ -144,6 +145,7 @@ app.MapGet("/status", () => Results.Ok(new
     name = "Universal AI LLM Gateway",
     version = "1.0.0",
     framework = ".NET 8 Minimal API",
+    guardrails = "Enabled (PII, PCI, Secrets, Prompt Injection)",
     status = "Online",
     dashboard = "/",
     swagger = "/swagger"

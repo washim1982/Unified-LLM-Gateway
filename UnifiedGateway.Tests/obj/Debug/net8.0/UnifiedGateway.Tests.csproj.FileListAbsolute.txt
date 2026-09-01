@@ -130,3 +130,5 @@ C:\Users\wasim\workspace\Projects\Unified-LLM-Gateway\UnifiedGateway.Tests\obj\D
 C:\Users\wasim\workspace\Projects\Unified-LLM-Gateway\UnifiedGateway.Tests\obj\Debug\net8.0\UnifiedGateway.Tests.pdb
 C:\Users\wasim\workspace\Projects\Unified-LLM-Gateway\UnifiedGateway.Tests\obj\Debug\net8.0\UnifiedGateway.Tests.genruntimeconfig.cache
 C:\Users\wasim\workspace\Projects\Unified-LLM-Gateway\UnifiedGateway.Tests\obj\Debug\net8.0\ref\UnifiedGateway.Tests.dll
+C:\Users\wasim\workspace\Projects\Unified-LLM-Gateway\UnifiedGateway.Tests\bin\Debug\net8.0\data\dev\app_registry_dev.json
+C:\Users\wasim\workspace\Projects\Unified-LLM-Gateway\UnifiedGateway.Tests\obj\Debug\net8.0\UnifiedGateway.Tests.sourcelink.json

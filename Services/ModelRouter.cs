@@ -9,6 +9,7 @@ public class ModelRouter : IModelRouter
     private readonly IBedrockService _bedrockService;
     private readonly ILocalModelService _localModelService;
     private readonly IApplicationRegistryService _registryService;
+    private readonly IGuardrailService _guardrailService;
     private readonly GatewayOptions _options;
     private readonly ILogger<ModelRouter> _logger;
 
@@ -16,12 +17,14 @@ public class ModelRouter : IModelRouter
         IBedrockService bedrockService,
         ILocalModelService localModelService,
         IApplicationRegistryService registryService,
+        IGuardrailService guardrailService,
         IOptions<GatewayOptions> options,
         ILogger<ModelRouter> logger)
     {
         _bedrockService = bedrockService;
         _localModelService = localModelService;
         _registryService = registryService;
+        _guardrailService = guardrailService;
         _options = options.Value;
         _logger = logger;
     }
@@ -89,17 +92,59 @@ public class ModelRouter : IModelRouter
         CancellationToken cancellationToken)
     {
         var overallStopwatch = Stopwatch.StartNew();
-        var primaryProvider = ResolveProvider(request);
-        var primaryModel = request.Model;
+
+        // 1. Enterprise Guardrail Inspection before hitting any backend
+        var guardrailResult = await _guardrailService.EvaluateAsync(
+            request.Input,
+            request.System,
+            cancellationToken: cancellationToken);
+
+        if (guardrailResult.IsBlocked)
+        {
+            overallStopwatch.Stop();
+            _logger.LogWarning("Request blocked by enterprise guardrails for AppId: {AppId}. Violations: {Violations}",
+                request.Metadata?.AppId ?? "direct",
+                string.Join("; ", guardrailResult.Violations.Select(v => v.RuleName)));
+
+            var blockedRes = new UniversalResponse
+            {
+                Output = string.Empty,
+                Model = request.Model,
+                Provider = request.Provider ?? "guardrail",
+                LatencyMs = overallStopwatch.ElapsedMilliseconds,
+                AppId = request.Metadata?.AppId,
+                SessionId = request.Metadata?.SessionId,
+                Error = new GatewayError
+                {
+                    Code = "GUARDRAIL_BLOCKED",
+                    Message = "Request blocked by enterprise security guardrail policy.",
+                    Details = string.Join("; ", guardrailResult.Violations.Select(v => $"{v.Category} ({v.RuleName}): {v.Description}"))
+                }
+            };
+
+            await RecordTelemetryAsync(request, blockedRes, false, guardrailResult);
+            return blockedRes;
+        }
+
+        // Apply sanitized/redacted input if redaction occurred
+        var sanitizedReq = request;
+        if (guardrailResult.ActionTaken == "Redacted")
+        {
+            _logger.LogInformation("Guardrails redacted sensitive data in input before routing to {Model}", request.Model);
+            sanitizedReq = request with { Input = guardrailResult.SanitizedInput };
+        }
+
+        var primaryProvider = ResolveProvider(sanitizedReq);
+        var primaryModel = sanitizedReq.Model;
 
         _logger.LogInformation("Routing request. Primary Provider: {Provider}, Primary Model: {Model}, AppId: {AppId}",
-            primaryProvider, primaryModel, request.Metadata?.AppId ?? "direct");
+            primaryProvider, primaryModel, sanitizedReq.Metadata?.AppId ?? "direct");
 
         UniversalResponse response;
 
         try
         {
-            response = await DispatchToProviderAsync(primaryProvider, request, cancellationToken);
+            response = await DispatchToProviderAsync(primaryProvider, sanitizedReq, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -122,7 +167,7 @@ public class ModelRouter : IModelRouter
         {
             overallStopwatch.Stop();
             var finalRes = response with { LatencyMs = overallStopwatch.ElapsedMilliseconds };
-            await RecordTelemetryAsync(request, finalRes, false);
+            await RecordTelemetryAsync(sanitizedReq, finalRes, false, guardrailResult);
             return finalRes;
         }
 
@@ -140,7 +185,7 @@ public class ModelRouter : IModelRouter
             _logger.LogWarning("Triggering automatic fallback. Primary failed ({ErrorCode}). Attempting Fallback Provider: {FallbackProvider}, Fallback Model: {FallbackModel}",
                 response.Error?.Code ?? "NO_OUTPUT", targetFallbackProvider, targetFallbackModel);
 
-            var fallbackReq = request with
+            var fallbackReq = sanitizedReq with
             {
                 Provider = targetFallbackProvider,
                 Model = targetFallbackModel
@@ -159,7 +204,7 @@ public class ModelRouter : IModelRouter
                         LatencyMs = overallStopwatch.ElapsedMilliseconds
                     };
 
-                    await RecordTelemetryAsync(request, finalFallback, true);
+                    await RecordTelemetryAsync(sanitizedReq, finalFallback, true, guardrailResult);
                     return finalFallback;
                 }
 
@@ -174,7 +219,7 @@ public class ModelRouter : IModelRouter
                         Message = $"Primary failed: [{response.Error?.Message}]. Fallback failed: [{fallbackResponse.Error?.Message}]"
                     }
                 };
-                await RecordTelemetryAsync(request, dualFailure, false);
+                await RecordTelemetryAsync(sanitizedReq, dualFailure, false, guardrailResult);
                 return dualFailure;
             }
             catch (Exception ex)
@@ -185,7 +230,7 @@ public class ModelRouter : IModelRouter
 
         overallStopwatch.Stop();
         var failureRes = response with { LatencyMs = overallStopwatch.ElapsedMilliseconds };
-        await RecordTelemetryAsync(request, failureRes, false);
+        await RecordTelemetryAsync(sanitizedReq, failureRes, false, guardrailResult);
         return failureRes;
     }
 
@@ -223,7 +268,11 @@ public class ModelRouter : IModelRouter
         return "bedrock";
     }
 
-    private async Task RecordTelemetryAsync(UniversalRequest req, UniversalResponse res, bool fallbackUsed)
+    private async Task RecordTelemetryAsync(
+        UniversalRequest req,
+        UniversalResponse res,
+        bool fallbackUsed,
+        GuardrailResult guardrailResult)
     {
         try
         {
@@ -237,6 +286,8 @@ public class ModelRouter : IModelRouter
                 OutputTokens = res.Tokens.Output,
                 Success = res.Error == null,
                 FallbackUsed = fallbackUsed,
+                GuardrailAction = guardrailResult.ActionTaken,
+                GuardrailViolations = guardrailResult.Violations.Select(v => $"{v.Category}:{v.RuleName}").ToList(),
                 Timestamp = DateTimeOffset.UtcNow,
                 ErrorMessage = res.Error?.Message
             };

@@ -58,7 +58,6 @@ public class ApplicationRegistryService : IApplicationRegistryService
                 }
             }
 
-            // Seed initial default apps
             SeedDefaultApps();
             PersistRegistryToFile();
         }
@@ -202,7 +201,6 @@ public class ApplicationRegistryService : IApplicationRegistryService
             return null;
         }
 
-        // Create snapshot of previous state for version history
         var snapshot = new AppConfigSnapshot
         {
             Version = existing.Version,
@@ -265,7 +263,6 @@ public class ApplicationRegistryService : IApplicationRegistryService
             return Task.FromResult<(bool, AppConfig?)>((false, null));
         }
 
-        // Master admin key bypass
         if (_securityService.VerifyKey(apiKey, _securityService.HashKey(_options.Security.AdminApiKey)))
         {
             return Task.FromResult<(bool, AppConfig?)>((true, app));
@@ -297,6 +294,10 @@ public class ApplicationRegistryService : IApplicationRegistryService
         var bedrock = logs.Count(l => l.Provider.Equals("bedrock", StringComparison.OrdinalIgnoreCase));
         var local = logs.Count(l => l.Provider.Equals("local", StringComparison.OrdinalIgnoreCase));
 
+        var evaluated = logs.Count(l => l.GuardrailAction != "None");
+        var redacted = logs.Count(l => l.GuardrailAction == "Redacted");
+        var blocked = logs.Count(l => l.GuardrailAction == "Blocked");
+
         var appStats = new Dictionary<string, AppMetricStats>(StringComparer.OrdinalIgnoreCase);
         foreach (var group in logs.Where(l => !string.IsNullOrEmpty(l.AppId)).GroupBy(l => l.AppId!))
         {
@@ -306,7 +307,8 @@ public class ApplicationRegistryService : IApplicationRegistryService
                 RequestCount = group.Count(),
                 TokenCount = group.Sum(l => (long)l.TotalTokens),
                 AvgLatencyMs = group.Average(l => l.LatencyMs),
-                ErrorCount = group.Count(l => !l.Success)
+                ErrorCount = group.Count(l => !l.Success),
+                GuardrailBlockedCount = group.Count(l => l.GuardrailAction == "Blocked")
             };
         }
 
@@ -316,6 +318,9 @@ public class ApplicationRegistryService : IApplicationRegistryService
             SuccessfulRequests = successful,
             FailedRequests = failed,
             FallbackCount = fallbacks,
+            GuardrailEvaluatedCount = evaluated,
+            GuardrailRedactedCount = redacted,
+            GuardrailBlockedCount = blocked,
             TotalTokens = totalTokens,
             AvgLatencyMs = Math.Round(avgLatency, 2),
             BedrockRequests = bedrock,

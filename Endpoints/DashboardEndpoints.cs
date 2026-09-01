@@ -110,5 +110,43 @@ public static class DashboardEndpoints
             return Results.Ok(status);
         })
         .WithName("GetCredentialStatus");
+
+        #region Guardrails Management Endpoints
+
+        // Get Guardrail Configuration
+        group.MapGet("/guardrails/config", (IGuardrailService guardrailService) =>
+        {
+            var config = guardrailService.GetCurrentOptions();
+            return Results.Ok(config);
+        })
+        .WithName("GetGuardrailConfig")
+        .WithSummary("Retrieve current enterprise safety guardrail rules and active mode");
+
+        // Update Guardrail Configuration
+        group.MapPut("/guardrails/config", ([FromBody] GuardrailOptions options, IGuardrailService guardrailService) =>
+        {
+            guardrailService.UpdateOptions(options);
+            return Results.Ok(new { message = "Guardrail configuration updated successfully", config = options });
+        })
+        .WithName("UpdateGuardrailConfig")
+        .WithSummary("Update enterprise guardrail rules, PCI/PII detectors, and enforcement mode (Block/Redact/Audit)");
+
+        // Test text against Guardrail inspection sandbox
+        group.MapPost("/guardrails/test", async (
+            [FromBody] GuardrailTestRequest request,
+            IGuardrailService guardrailService,
+            CancellationToken ct) =>
+        {
+            var result = await guardrailService.EvaluateAsync(
+                request.Input,
+                modeOverride: request.Mode,
+                cancellationToken: ct);
+
+            return Results.Ok(result);
+        })
+        .WithName("TestGuardrails")
+        .WithSummary("Interactive sandbox to test text against PCI, PII, Secrets, and Injection guardrails");
+
+        #endregion
     }
 }
