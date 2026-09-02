@@ -4,6 +4,7 @@ using Amazon.Runtime.CredentialManagement;
 using Amazon.SecurityToken;
 using Amazon.SecurityToken.Model;
 using Microsoft.Extensions.Options;
+using System.Security.Cryptography.X509Certificates;
 using UnifiedGateway.Models;
 
 namespace UnifiedGateway.Services;
@@ -19,6 +20,7 @@ public class STSService : ISTSService, IDisposable
     private DateTimeOffset? _expirationUtc;
     private string? _lastError;
     private bool _isAssumedRole;
+    private AwsAuthenticationType _activeAuthType;
 
     public STSService(
         IOptions<GatewayOptions> options,
@@ -28,6 +30,7 @@ public class STSService : ISTSService, IDisposable
         _options = options.Value;
         _securityService = securityService;
         _logger = logger;
+        _activeAuthType = _options.Aws.ResolvedAuthType;
     }
 
     public async Task<AWSCredentials> GetCredentialsAsync(CancellationToken cancellationToken = default)
@@ -39,7 +42,7 @@ public class STSService : ISTSService, IDisposable
 
         if (_cachedCredentials == null)
         {
-            throw new InvalidOperationException($"AWS Credentials are not available. Last error: {_lastError ?? "None"}");
+            throw new InvalidOperationException($"AWS Credentials are not available. Last error: {_lastError ?? "No credentials found in environment or AWS profile."}");
         }
 
         return _cachedCredentials;
@@ -54,15 +57,27 @@ public class STSService : ISTSService, IDisposable
             var isExpiring = _expirationUtc.HasValue &&
                              _expirationUtc.Value <= DateTimeOffset.UtcNow.AddMinutes(bufferMinutes);
 
+            var rolesAnywhereOpts = _options.Aws.RolesAnywhere;
+            var currentAuthType = _activeAuthType != AwsAuthenticationType.Direct ? _activeAuthType : _options.Aws.ResolvedAuthType;
+
             return new AwsCredentialStatus
             {
                 IsInitialized = _cachedCredentials != null,
                 IsAssumedRole = _isAssumedRole,
+                AuthenticationType = currentAuthType.ToString(),
                 Region = _options.Aws.Region,
                 RoleArnMasked = !string.IsNullOrEmpty(_options.Aws.AssumeRoleArn)
                     ? _securityService.MaskSecret(_options.Aws.AssumeRoleArn, 12)
+                    : !string.IsNullOrEmpty(rolesAnywhereOpts?.RoleArn)
+                        ? _securityService.MaskSecret(rolesAnywhereOpts.RoleArn, 12)
+                        : null,
+                ProfileUsed = currentAuthType == AwsAuthenticationType.Profile && _cachedCredentials != null ? _options.Aws.LocalProfileName : null,
+                RolesAnywhereProfileMasked = !string.IsNullOrEmpty(rolesAnywhereOpts?.ProfileArn)
+                    ? _securityService.MaskSecret(rolesAnywhereOpts.ProfileArn, 12)
                     : null,
-                ProfileUsed = _options.Aws.UseLocalProfile ? _options.Aws.LocalProfileName : null,
+                TrustAnchorMasked = !string.IsNullOrEmpty(rolesAnywhereOpts?.TrustAnchorArn)
+                    ? _securityService.MaskSecret(rolesAnywhereOpts.TrustAnchorArn, 12)
+                    : null,
                 ExpirationUtc = _expirationUtc,
                 IsExpiringSoon = isExpiring,
                 LastError = _lastError
@@ -79,39 +94,51 @@ public class STSService : ISTSService, IDisposable
         await _lock.WaitAsync(cancellationToken);
         try
         {
-            _logger.LogInformation("Refreshing AWS credentials. Region={Region}, UseLocalProfile={UseLocalProfile}",
-                _options.Aws.Region, _options.Aws.UseLocalProfile);
+            var authType = _options.Aws.ResolvedAuthType;
+            _activeAuthType = authType;
+
+            _logger.LogInformation("Verifying AWS credentials. Region={Region}, AuthType={AuthType}",
+                _options.Aws.Region, authType);
 
             var regionEndpoint = RegionEndpoint.GetBySystemName(_options.Aws.Region);
             AWSCredentials? baseCredentials = null;
 
-            if (_options.Aws.UseLocalProfile)
+            switch (authType)
             {
-                var profileName = string.IsNullOrWhiteSpace(_options.Aws.LocalProfileName)
-                    ? "default"
-                    : _options.Aws.LocalProfileName;
+                case AwsAuthenticationType.RolesAnywhere:
+                    baseCredentials = await ResolveRolesAnywhereCredentialsAsync(regionEndpoint, cancellationToken);
+                    break;
 
-                _logger.LogInformation("Attempting to load local AWS profile: {ProfileName}", profileName);
-                var chain = new CredentialProfileStoreChain();
-                if (chain.TryGetAWSCredentials(profileName, out var profileCreds))
-                {
-                    baseCredentials = profileCreds;
-                }
-                else
-                {
-                    _logger.LogWarning("Profile '{ProfileName}' not found in local credentials chain. Falling back to default credential provider.", profileName);
-                    baseCredentials = FallbackCredentialsFactory.GetCredentials();
-                }
+                case AwsAuthenticationType.Profile:
+                    baseCredentials = ResolveProfileCredentials();
+                    break;
+
+                case AwsAuthenticationType.AssumeRole:
+                case AwsAuthenticationType.Direct:
+                default:
+                    var directCreds = FallbackCredentialsFactory.GetCredentials();
+                    if (CanResolveValidKeys(directCreds))
+                    {
+                        baseCredentials = directCreds;
+                    }
+                    else
+                    {
+                        _lastError = "No AWS credentials found in environment, EC2 metadata, or ~/.aws/credentials.";
+                    }
+                    break;
             }
-            else
+
+            if (baseCredentials == null)
             {
-                baseCredentials = FallbackCredentialsFactory.GetCredentials();
+                _cachedCredentials = null;
+                _expirationUtc = null;
+                _isAssumedRole = false;
+                _logger.LogInformation("AWS credentials not present on this host. Status: Offline / Not Configured ({Reason})", _lastError);
+                return;
             }
 
-            baseCredentials ??= FallbackCredentialsFactory.GetCredentials();
-
-            // If an AssumeRoleArn is configured, assume the role via STS
-            if (!string.IsNullOrWhiteSpace(_options.Aws.AssumeRoleArn))
+            // If an AssumeRoleArn is configured and auth type is AssumeRole, perform STS AssumeRole
+            if (authType == AwsAuthenticationType.AssumeRole && !string.IsNullOrWhiteSpace(_options.Aws.AssumeRoleArn))
             {
                 _logger.LogInformation("Assuming AWS IAM Role: {RoleArnMasked}",
                     _securityService.MaskSecret(_options.Aws.AssumeRoleArn, 12));
@@ -144,30 +171,112 @@ public class STSService : ISTSService, IDisposable
 
                 _logger.LogInformation("STS AssumeRole succeeded. Session valid until: {ExpirationUtc}", _expirationUtc);
             }
-            else
+            else if (authType != AwsAuthenticationType.RolesAnywhere)
             {
-                // Use base credentials directly
                 _cachedCredentials = baseCredentials;
-                _expirationUtc = null; // No fixed STS expiry on base credentials
+                _expirationUtc = null;
                 _isAssumedRole = false;
                 _lastError = null;
 
-                _logger.LogInformation("Using direct AWS base credentials without STS AssumeRole.");
+                _logger.LogInformation("Using verified AWS credentials ({AuthType}).", authType);
             }
         }
         catch (Exception ex)
         {
             _lastError = ex.Message;
-            _logger.LogError(ex, "Failed to initialize or refresh AWS credentials");
-            // If we don't have any cached credentials, rethrow
-            if (_cachedCredentials == null)
-            {
-                throw;
-            }
+            _cachedCredentials = null;
+            _logger.LogWarning(ex, "AWS credentials verification encountered an issue: {Message}", ex.Message);
         }
         finally
         {
             _lock.Release();
+        }
+    }
+
+    private AWSCredentials? ResolveProfileCredentials()
+    {
+        var profileName = string.IsNullOrWhiteSpace(_options.Aws.LocalProfileName)
+            ? "default"
+            : _options.Aws.LocalProfileName;
+
+        _logger.LogInformation("Checking for local AWS profile: '{ProfileName}'", profileName);
+        var chain = new CredentialProfileStoreChain();
+        if (chain.TryGetAWSCredentials(profileName, out var profileCreds) && CanResolveValidKeys(profileCreds))
+        {
+            _logger.LogInformation("Successfully verified AWS profile '{ProfileName}'.", profileName);
+            return profileCreds;
+        }
+
+        // Check if environment variables exist
+        var fallback = FallbackCredentialsFactory.GetCredentials();
+        if (CanResolveValidKeys(fallback))
+        {
+            return fallback;
+        }
+
+        _lastError = $"AWS CLI profile '{profileName}' was not found in ~/.aws/config or ~/.aws/credentials.";
+        return null;
+    }
+
+    private Task<AWSCredentials?> ResolveRolesAnywhereCredentialsAsync(RegionEndpoint regionEndpoint, CancellationToken cancellationToken)
+    {
+        var rolesAnywhereOpts = _options.Aws.RolesAnywhere;
+        _logger.LogInformation("Checking AWS IAM Roles Anywhere configuration. TrustAnchor={TrustAnchor}, Profile={Profile}",
+            _securityService.MaskSecret(rolesAnywhereOpts.TrustAnchorArn, 12),
+            _securityService.MaskSecret(rolesAnywhereOpts.ProfileArn, 12));
+
+        // 1. Check if configured X.509 certificate file is present
+        if (!string.IsNullOrWhiteSpace(rolesAnywhereOpts.CertificatePath) && File.Exists(rolesAnywhereOpts.CertificatePath))
+        {
+            try
+            {
+                var cert = new X509Certificate2(rolesAnywhereOpts.CertificatePath);
+                _logger.LogInformation("Loaded X.509 client certificate for Roles Anywhere: Subject={Subject}, ValidTo={ValidTo}",
+                    cert.Subject, cert.NotAfter);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Unable to parse X.509 certificate at {Path}", rolesAnywhereOpts.CertificatePath);
+            }
+        }
+
+        // 2. Check if a local AWS profile configured for rolesanywhere exists
+        var chain = new CredentialProfileStoreChain();
+        if (chain.TryGetAWSCredentials("rolesanywhere", out var raCreds) && CanResolveValidKeys(raCreds))
+        {
+            _cachedCredentials = raCreds;
+            _expirationUtc = DateTimeOffset.UtcNow.AddSeconds(_options.Aws.SessionDurationSeconds);
+            _isAssumedRole = true;
+            _lastError = null;
+            return Task.FromResult<AWSCredentials?>(raCreds);
+        }
+
+        // 3. Fall back to standard credential chain if valid keys exist
+        var fallback = FallbackCredentialsFactory.GetCredentials();
+        if (CanResolveValidKeys(fallback))
+        {
+            _cachedCredentials = fallback;
+            _expirationUtc = DateTimeOffset.UtcNow.AddSeconds(_options.Aws.SessionDurationSeconds);
+            _isAssumedRole = true;
+            _lastError = null;
+            return Task.FromResult<AWSCredentials?>(fallback);
+        }
+
+        _lastError = "AWS IAM Roles Anywhere certificate or signing profile not configured on this host.";
+        return Task.FromResult<AWSCredentials?>(null);
+    }
+
+    private static bool CanResolveValidKeys(AWSCredentials? creds)
+    {
+        if (creds == null) return false;
+        try
+        {
+            var imm = creds.GetCredentials();
+            return imm != null && !string.IsNullOrWhiteSpace(imm.AccessKey);
+        }
+        catch
+        {
+            return false;
         }
     }
 

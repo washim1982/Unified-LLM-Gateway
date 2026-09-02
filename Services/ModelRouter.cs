@@ -10,6 +10,7 @@ public class ModelRouter : IModelRouter
     private readonly ILocalModelService _localModelService;
     private readonly IApplicationRegistryService _registryService;
     private readonly IGuardrailService _guardrailService;
+    private readonly IAuditLogService _auditLogService;
     private readonly GatewayOptions _options;
     private readonly ILogger<ModelRouter> _logger;
 
@@ -18,6 +19,7 @@ public class ModelRouter : IModelRouter
         ILocalModelService localModelService,
         IApplicationRegistryService registryService,
         IGuardrailService guardrailService,
+        IAuditLogService auditLogService,
         IOptions<GatewayOptions> options,
         ILogger<ModelRouter> logger)
     {
@@ -25,6 +27,7 @@ public class ModelRouter : IModelRouter
         _localModelService = localModelService;
         _registryService = registryService;
         _guardrailService = guardrailService;
+        _auditLogService = auditLogService;
         _options = options.Value;
         _logger = logger;
     }
@@ -93,18 +96,18 @@ public class ModelRouter : IModelRouter
     {
         var overallStopwatch = Stopwatch.StartNew();
 
-        // 1. Enterprise Guardrail Inspection before hitting any backend
-        var guardrailResult = await _guardrailService.EvaluateAsync(
+        // 1. Inbound Enterprise Guardrail Inspection before hitting any backend
+        var inputGuardrailResult = await _guardrailService.EvaluateAsync(
             request.Input,
             request.System,
             cancellationToken: cancellationToken);
 
-        if (guardrailResult.IsBlocked)
+        if (inputGuardrailResult.IsBlocked)
         {
             overallStopwatch.Stop();
-            _logger.LogWarning("Request blocked by enterprise guardrails for AppId: {AppId}. Violations: {Violations}",
+            _logger.LogWarning("Request blocked by inbound guardrails for AppId: {AppId}. Violations: {Violations}",
                 request.Metadata?.AppId ?? "direct",
-                string.Join("; ", guardrailResult.Violations.Select(v => v.RuleName)));
+                string.Join("; ", inputGuardrailResult.Violations.Select(v => v.RuleName)));
 
             var blockedRes = new UniversalResponse
             {
@@ -118,20 +121,20 @@ public class ModelRouter : IModelRouter
                 {
                     Code = "GUARDRAIL_BLOCKED",
                     Message = "Request blocked by enterprise security guardrail policy.",
-                    Details = string.Join("; ", guardrailResult.Violations.Select(v => $"{v.Category} ({v.RuleName}): {v.Description}"))
+                    Details = string.Join("; ", inputGuardrailResult.Violations.Select(v => $"{v.Category} ({v.RuleName}): {v.Description}"))
                 }
             };
 
-            await RecordTelemetryAsync(request, blockedRes, false, guardrailResult);
+            await RecordTelemetryAndAuditAsync(request, blockedRes, false, inputGuardrailResult, null);
             return blockedRes;
         }
 
-        // Apply sanitized/redacted input if redaction occurred
+        // Apply sanitized/redacted input if input redaction occurred
         var sanitizedReq = request;
-        if (guardrailResult.ActionTaken == "Redacted")
+        if (inputGuardrailResult.ActionTaken == "Redacted")
         {
-            _logger.LogInformation("Guardrails redacted sensitive data in input before routing to {Model}", request.Model);
-            sanitizedReq = request with { Input = guardrailResult.SanitizedInput };
+            _logger.LogInformation("Guardrails redacted sensitive data in prompt before routing to {Model}", request.Model);
+            sanitizedReq = request with { Input = inputGuardrailResult.SanitizedInput };
         }
 
         var primaryProvider = ResolveProvider(sanitizedReq);
@@ -162,16 +165,54 @@ public class ModelRouter : IModelRouter
             };
         }
 
-        // If primary succeeded, record and return
+        // 2. Primary Provider Success -> Perform Output Guardrail Inspection
         if (response.Error == null && !string.IsNullOrEmpty(response.Output))
         {
+            var outputGuardrailResult = await _guardrailService.EvaluateOutputAsync(response.Output, cancellationToken: cancellationToken);
+
+            if (outputGuardrailResult.IsBlocked)
+            {
+                overallStopwatch.Stop();
+                _logger.LogWarning("Model output blocked by output guardrails for AppId: {AppId}. Leaked items: {Violations}",
+                    sanitizedReq.Metadata?.AppId ?? "direct",
+                    string.Join("; ", outputGuardrailResult.Violations.Select(v => v.RuleName)));
+
+                var blockedOutputRes = new UniversalResponse
+                {
+                    Output = string.Empty,
+                    Model = primaryModel,
+                    Provider = primaryProvider,
+                    LatencyMs = overallStopwatch.ElapsedMilliseconds,
+                    AppId = sanitizedReq.Metadata?.AppId,
+                    SessionId = sanitizedReq.Metadata?.SessionId,
+                    Error = new GatewayError
+                    {
+                        Code = "GUARDRAIL_OUTPUT_BLOCKED",
+                        Message = "Model response suppressed due to sensitive data leakage policy violation.",
+                        Details = string.Join("; ", outputGuardrailResult.Violations.Select(v => $"{v.Category} ({v.RuleName}): {v.Description}"))
+                    }
+                };
+
+                await RecordTelemetryAndAuditAsync(sanitizedReq, blockedOutputRes, false, inputGuardrailResult, outputGuardrailResult);
+                return blockedOutputRes;
+            }
+
             overallStopwatch.Stop();
-            var finalRes = response with { LatencyMs = overallStopwatch.ElapsedMilliseconds };
-            await RecordTelemetryAsync(sanitizedReq, finalRes, false, guardrailResult);
+            var sanitizedOutput = outputGuardrailResult.ActionTaken == "Redacted"
+                ? outputGuardrailResult.SanitizedInput
+                : response.Output;
+
+            var finalRes = response with
+            {
+                Output = sanitizedOutput,
+                LatencyMs = overallStopwatch.ElapsedMilliseconds
+            };
+
+            await RecordTelemetryAndAuditAsync(sanitizedReq, finalRes, false, inputGuardrailResult, outputGuardrailResult);
             return finalRes;
         }
 
-        // Check if fallback is configured
+        // 3. Trigger Fallback if Primary Failed
         if (!string.IsNullOrWhiteSpace(fallbackProvider) || !string.IsNullOrWhiteSpace(fallbackModel))
         {
             var targetFallbackProvider = !string.IsNullOrWhiteSpace(fallbackProvider)
@@ -198,13 +239,42 @@ public class ModelRouter : IModelRouter
 
                 if (fallbackResponse.Error == null)
                 {
+                    var fallbackOutputGuardrail = await _guardrailService.EvaluateOutputAsync(fallbackResponse.Output, cancellationToken: cancellationToken);
+
+                    if (fallbackOutputGuardrail.IsBlocked)
+                    {
+                        var blockedFallbackRes = new UniversalResponse
+                        {
+                            Output = string.Empty,
+                            Model = targetFallbackModel,
+                            Provider = targetFallbackProvider,
+                            FallbackUsed = true,
+                            LatencyMs = overallStopwatch.ElapsedMilliseconds,
+                            AppId = sanitizedReq.Metadata?.AppId,
+                            SessionId = sanitizedReq.Metadata?.SessionId,
+                            Error = new GatewayError
+                            {
+                                Code = "GUARDRAIL_OUTPUT_BLOCKED",
+                                Message = "Fallback response suppressed due to sensitive data leakage policy violation.",
+                                Details = string.Join("; ", fallbackOutputGuardrail.Violations.Select(v => $"{v.Category} ({v.RuleName}): {v.Description}"))
+                            }
+                        };
+                        await RecordTelemetryAndAuditAsync(sanitizedReq, blockedFallbackRes, true, inputGuardrailResult, fallbackOutputGuardrail);
+                        return blockedFallbackRes;
+                    }
+
+                    var sanitizedFallbackOutput = fallbackOutputGuardrail.ActionTaken == "Redacted"
+                        ? fallbackOutputGuardrail.SanitizedInput
+                        : fallbackResponse.Output;
+
                     var finalFallback = fallbackResponse with
                     {
+                        Output = sanitizedFallbackOutput,
                         FallbackUsed = true,
                         LatencyMs = overallStopwatch.ElapsedMilliseconds
                     };
 
-                    await RecordTelemetryAsync(sanitizedReq, finalFallback, true, guardrailResult);
+                    await RecordTelemetryAndAuditAsync(sanitizedReq, finalFallback, true, inputGuardrailResult, fallbackOutputGuardrail);
                     return finalFallback;
                 }
 
@@ -219,7 +289,7 @@ public class ModelRouter : IModelRouter
                         Message = $"Primary failed: [{response.Error?.Message}]. Fallback failed: [{fallbackResponse.Error?.Message}]"
                     }
                 };
-                await RecordTelemetryAsync(sanitizedReq, dualFailure, false, guardrailResult);
+                await RecordTelemetryAndAuditAsync(sanitizedReq, dualFailure, false, inputGuardrailResult, null);
                 return dualFailure;
             }
             catch (Exception ex)
@@ -230,7 +300,7 @@ public class ModelRouter : IModelRouter
 
         overallStopwatch.Stop();
         var failureRes = response with { LatencyMs = overallStopwatch.ElapsedMilliseconds };
-        await RecordTelemetryAsync(sanitizedReq, failureRes, false, guardrailResult);
+        await RecordTelemetryAndAuditAsync(sanitizedReq, failureRes, false, inputGuardrailResult, null);
         return failureRes;
     }
 
@@ -268,14 +338,30 @@ public class ModelRouter : IModelRouter
         return "bedrock";
     }
 
-    private async Task RecordTelemetryAsync(
+    private async Task RecordTelemetryAndAuditAsync(
         UniversalRequest req,
         UniversalResponse res,
         bool fallbackUsed,
-        GuardrailResult guardrailResult)
+        GuardrailResult inputGuardrail,
+        GuardrailResult? outputGuardrail)
     {
         try
         {
+            var allViolations = new List<string>();
+            if (inputGuardrail.Violations.Count > 0)
+            {
+                allViolations.AddRange(inputGuardrail.Violations.Select(v => $"Input:{v.Category}:{v.RuleName}"));
+            }
+            if (outputGuardrail != null && outputGuardrail.Violations.Count > 0)
+            {
+                allViolations.AddRange(outputGuardrail.Violations.Select(v => $"Output:{v.Category}:{v.RuleName}"));
+            }
+
+            var overallGuardrailAction = inputGuardrail.ActionTaken != "Passed"
+                ? inputGuardrail.ActionTaken
+                : (outputGuardrail?.ActionTaken ?? "Passed");
+
+            // 1. In-memory dashboard metrics
             var log = new RequestLogEntry
             {
                 AppId = req.Metadata?.AppId,
@@ -286,17 +372,42 @@ public class ModelRouter : IModelRouter
                 OutputTokens = res.Tokens.Output,
                 Success = res.Error == null,
                 FallbackUsed = fallbackUsed,
-                GuardrailAction = guardrailResult.ActionTaken,
-                GuardrailViolations = guardrailResult.Violations.Select(v => $"{v.Category}:{v.RuleName}").ToList(),
+                GuardrailAction = overallGuardrailAction,
+                GuardrailViolations = allViolations,
                 Timestamp = DateTimeOffset.UtcNow,
                 ErrorMessage = res.Error?.Message
             };
 
             await _registryService.RecordMetricAsync(log);
+
+            // 2. Persistent Disk Audit Trail
+            var auditRecord = new AuditLogRecord
+            {
+                AuditId = log.Id,
+                Timestamp = log.Timestamp,
+                AppId = req.Metadata?.AppId,
+                CallerId = req.Metadata?.UserId ?? req.Metadata?.SessionId,
+                AuthType = req.Metadata?.AppId != null ? "Application" : "Direct",
+                Route = req.Metadata?.AppId != null ? $"/gateway/{req.Metadata.AppId}/invoke" : "/gateway/universal/invoke",
+                Model = res.Model,
+                Provider = res.Provider,
+                InputGuardrailAction = inputGuardrail.ActionTaken,
+                OutputGuardrailAction = outputGuardrail?.ActionTaken ?? "None",
+                GuardrailViolations = allViolations,
+                InputTokens = res.Tokens.Input,
+                OutputTokens = res.Tokens.Output,
+                LatencyMs = res.LatencyMs,
+                StatusCode = res.Error == null ? 200 : (res.Error.Code.Contains("BLOCKED") ? 422 : 500),
+                Success = res.Error == null,
+                FallbackUsed = fallbackUsed,
+                ErrorMessage = res.Error?.Message
+            };
+
+            _auditLogService.LogRequest(auditRecord);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to record telemetry log");
+            _logger.LogWarning(ex, "Failed to record telemetry and audit trail");
         }
     }
 }

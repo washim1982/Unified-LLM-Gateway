@@ -50,6 +50,7 @@ builder.Services.AddHttpClient("LlamaCppClient", client =>
 // 4. Core Gateway Services Registration
 builder.Services.AddSingleton<ISecurityService, SecurityService>();
 builder.Services.AddSingleton<IGuardrailService, GuardrailService>();
+builder.Services.AddSingleton<IAuditLogService, AuditLogService>();
 builder.Services.AddSingleton<ISTSService, STSService>();
 builder.Services.AddSingleton<IBedrockService, BedrockService>();
 builder.Services.AddSingleton<ILocalModelService, LocalModelService>();

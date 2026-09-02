@@ -6,9 +6,12 @@ public record AwsCredentialStatus
 {
     public bool IsInitialized { get; init; }
     public bool IsAssumedRole { get; init; }
+    public string AuthenticationType { get; init; } = "Direct";
     public string Region { get; init; } = string.Empty;
     public string? RoleArnMasked { get; init; }
     public string? ProfileUsed { get; init; }
+    public string? RolesAnywhereProfileMasked { get; init; }
+    public string? TrustAnchorMasked { get; init; }
     public DateTimeOffset? ExpirationUtc { get; init; }
     public bool IsExpiringSoon { get; init; }
     public string? LastError { get; init; }

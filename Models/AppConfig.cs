@@ -16,11 +16,25 @@ public record AppConfig
     [JsonPropertyName("description")]
     public string Description { get; init; } = string.Empty;
 
+    // Primary Active Key
     [JsonPropertyName("apiKeyHash")]
     public string ApiKeyHash { get; set; } = string.Empty;
 
     [JsonPropertyName("apiKeyPrefix")]
     public string ApiKeyPrefix { get; set; } = string.Empty;
+
+    // Dual-Key Rotation Support (Secondary Grace-Period Key)
+    [JsonPropertyName("secondaryApiKeyHash")]
+    public string? SecondaryApiKeyHash { get; set; }
+
+    [JsonPropertyName("secondaryApiKeyPrefix")]
+    public string? SecondaryApiKeyPrefix { get; set; }
+
+    [JsonPropertyName("keyRotatedAt")]
+    public DateTimeOffset? KeyRotatedAt { get; set; }
+
+    [JsonPropertyName("secondaryKeyExpiresAt")]
+    public DateTimeOffset? SecondaryKeyExpiresAt { get; set; }
 
     [JsonPropertyName("provider")]
     public string Provider { get; init; } = "bedrock"; // "bedrock" or "local"
@@ -42,6 +56,10 @@ public record AppConfig
 
     [JsonPropertyName("fallbackModel")]
     public string? FallbackModel { get; init; } // e.g. "llama3"
+
+    // Host Network Trust (Source IP / CIDR Whitelisting)
+    [JsonPropertyName("allowedCidrs")]
+    public List<string> AllowedCidrs { get; init; } = [];
 
     [JsonPropertyName("version")]
     public int Version { get; init; } = 1;
@@ -79,6 +97,9 @@ public record AppConfigSnapshot
     [JsonPropertyName("maxTokens")]
     public int MaxTokens { get; init; }
 
+    [JsonPropertyName("allowedCidrs")]
+    public List<string> AllowedCidrs { get; init; } = [];
+
     [JsonPropertyName("savedAt")]
     public DateTimeOffset SavedAt { get; init; }
 }
@@ -114,6 +135,9 @@ public record CreateAppRequest
 
     [JsonPropertyName("fallbackModel")]
     public string? FallbackModel { get; init; }
+
+    [JsonPropertyName("allowedCidrs")]
+    public List<string> AllowedCidrs { get; init; } = [];
 }
 
 public record CreateAppResponse
@@ -126,6 +150,15 @@ public record CreateAppResponse
 
     [JsonPropertyName("endpointUrl")]
     public string EndpointUrl { get; init; } = string.Empty;
+
+    [JsonPropertyName("stsToken")]
+    public string StsToken { get; init; } = string.Empty;
+
+    [JsonPropertyName("stsExpiresAt")]
+    public DateTimeOffset StsExpiresAt { get; init; }
+
+    [JsonPropertyName("stsDurationSeconds")]
+    public int StsDurationSeconds { get; init; } = 3600;
 }
 
 public record UpdateAppRequest
@@ -157,6 +190,48 @@ public record UpdateAppRequest
     [JsonPropertyName("fallbackModel")]
     public string? FallbackModel { get; init; }
 
+    [JsonPropertyName("allowedCidrs")]
+    public List<string>? AllowedCidrs { get; init; }
+
     [JsonPropertyName("isActive")]
     public bool? IsActive { get; init; }
+}
+
+public record RotateKeyRequest
+{
+    [JsonPropertyName("gracePeriodDays")]
+    public int GracePeriodDays { get; init; } = 7; // Default: 7-day dual key grace period
+}
+
+public record RotateKeyResponse
+{
+    [JsonPropertyName("appId")]
+    public string AppId { get; init; } = string.Empty;
+
+    [JsonPropertyName("newApiKey")]
+    public string NewApiKey { get; init; } = string.Empty;
+
+    [JsonPropertyName("newKeyPrefix")]
+    public string NewKeyPrefix { get; init; } = string.Empty;
+
+    [JsonPropertyName("secondaryKeyPrefix")]
+    public string? SecondaryKeyPrefix { get; init; }
+
+    [JsonPropertyName("secondaryKeyExpiresAt")]
+    public DateTimeOffset? SecondaryKeyExpiresAt { get; init; }
+
+    [JsonPropertyName("rotatedAt")]
+    public DateTimeOffset RotatedAt { get; init; } = DateTimeOffset.UtcNow;
+}
+
+public record RevokeKeyResponse
+{
+    [JsonPropertyName("appId")]
+    public string AppId { get; init; } = string.Empty;
+
+    [JsonPropertyName("message")]
+    public string Message { get; init; } = string.Empty;
+
+    [JsonPropertyName("revokedAt")]
+    public DateTimeOffset RevokedAt { get; init; } = DateTimeOffset.UtcNow;
 }

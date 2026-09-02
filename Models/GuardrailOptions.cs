@@ -4,9 +4,9 @@ namespace UnifiedGateway.Models;
 
 public enum GuardrailActionMode
 {
-    Redact = 0,    // Anonymize sensitive data inline before passing to LLM
+    Redact = 0,    // Anonymize sensitive data inline
     Block = 1,     // Reject request immediately with 422/400 policy violation
-    AuditOnly = 2  // Log violation in telemetry without altering the prompt
+    AuditOnly = 2  // Log violation in telemetry without altering text
 }
 
 public class GuardrailOptions
@@ -18,6 +18,12 @@ public class GuardrailOptions
 
     [JsonPropertyName("mode")]
     public GuardrailActionMode Mode { get; set; } = GuardrailActionMode.Redact;
+
+    [JsonPropertyName("scanOutputs")]
+    public bool ScanOutputs { get; set; } = true;
+
+    [JsonPropertyName("outputMode")]
+    public GuardrailActionMode OutputMode { get; set; } = GuardrailActionMode.Redact;
 
     [JsonPropertyName("pci")]
     public PciGuardrailOptions Pci { get; set; } = new();

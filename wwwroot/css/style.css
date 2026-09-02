@@ -725,6 +725,10 @@ label {
   gap: 8px;
 }
 
+.modal-lg {
+  max-width: 680px;
+}
+
 .code-font {
   font-family: var(--font-mono);
 }

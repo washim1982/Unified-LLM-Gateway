@@ -2,7 +2,7 @@
   "openapi": "3.0.1",
   "info": {
     "title": "Universal AI LLM Gateway API",
-    "description": "Enterprise-grade Unified LLM Gateway (.NET 8) with dynamic Bedrock STS assume-role, local model failover, and automated application routing.",
+    "description": "Enterprise-grade Unified LLM Gateway (.NET 8) with Enterprise Guardrails (PII/PCI/Secrets), dynamic Bedrock STS assume-role, local model failover, and automated application routing.",
     "version": "v1"
   },
   "paths": {
@@ -115,6 +115,101 @@
         }
       }
     },
+    "/api/apps/{appId}/sts-token": {
+      "post": {
+        "tags": [
+          "Dashboard & Management"
+        ],
+        "operationId": "MintAppStsToken",
+        "parameters": [
+          {
+            "name": "appId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "durationSeconds",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/apps/{appId}/rotate-key": {
+      "post": {
+        "tags": [
+          "Dashboard & Management"
+        ],
+        "summary": "Rotate primary application API key while keeping previous key as secondary grace-period key",
+        "operationId": "RotateAppApiKey",
+        "parameters": [
+          {
+            "name": "appId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateKeyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/apps/{appId}/revoke-secondary-key": {
+      "post": {
+        "tags": [
+          "Dashboard & Management"
+        ],
+        "summary": "Immediately revoke secondary grace-period key for an application",
+        "operationId": "RevokeSecondaryApiKey",
+        "parameters": [
+          {
+            "name": "appId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/apps/{appId}/test": {
       "post": {
         "tags": [
@@ -161,6 +256,114 @@
         }
       }
     },
+    "/api/audit/logs": {
+      "get": {
+        "tags": [
+          "Dashboard & Management"
+        ],
+        "summary": "Query persistent compliance audit logs from disk with date and app filtering",
+        "operationId": "QueryAuditLogs",
+        "parameters": [
+          {
+            "name": "appId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fromDate",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "toDate",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/audit/export": {
+      "get": {
+        "tags": [
+          "Dashboard & Management"
+        ],
+        "summary": "Export persistent audit log trail as CSV file",
+        "operationId": "ExportAuditLogs",
+        "parameters": [
+          {
+            "name": "appId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fromDate",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "toDate",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/models": {
       "get": {
         "tags": [
@@ -187,10 +390,160 @@
         }
       }
     },
+    "/api/guardrails/config": {
+      "get": {
+        "tags": [
+          "Dashboard & Management"
+        ],
+        "summary": "Retrieve current enterprise safety guardrail rules and active mode",
+        "operationId": "GetGuardrailConfig",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Dashboard & Management"
+        ],
+        "summary": "Update enterprise guardrail rules, PCI/PII detectors, and enforcement mode (Block/Redact/Audit)",
+        "operationId": "UpdateGuardrailConfig",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuardrailOptions"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/guardrails/test": {
+      "post": {
+        "tags": [
+          "Dashboard & Management"
+        ],
+        "summary": "Interactive sandbox to test text against PCI, PII, Secrets, and Injection guardrails",
+        "operationId": "TestGuardrails",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuardrailTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/guardrails/test-output": {
+      "post": {
+        "tags": [
+          "Dashboard & Management"
+        ],
+        "summary": "Interactive sandbox to test simulated model response text for leaked credentials/PII",
+        "operationId": "TestOutputGuardrails",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuardrailTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/gateway/sts/token": {
+      "post": {
+        "tags": [
+          "Gateway Invocation & STS Tokens"
+        ],
+        "summary": "Exchange a long-term API key for a short temporary secret (STS token) with custom TTL",
+        "operationId": "GenerateStsToken",
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppStsTokenResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/gateway/sts/inspect": {
+      "post": {
+        "tags": [
+          "Gateway Invocation & STS Tokens"
+        ],
+        "summary": "Inspect decoded claims, expiration, and validity of an Application STS token",
+        "operationId": "InspectStsToken",
+        "parameters": [
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppStsInspectResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/gateway/{appId}/invoke": {
       "post": {
         "tags": [
-          "Gateway Invocation"
+          "Gateway Invocation & STS Tokens"
         ],
         "summary": "Invoke a registered AI application with auto-applied system prompt and model routing",
         "operationId": "InvokeApplication",
@@ -242,6 +595,26 @@
               }
             }
           },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UniversalResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UniversalResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -258,7 +631,7 @@
     "/gateway/universal/invoke": {
       "post": {
         "tags": [
-          "Gateway Invocation"
+          "Gateway Invocation & STS Tokens"
         ],
         "summary": "Direct universal schema invocation with specified model and provider",
         "operationId": "InvokeUniversal",
@@ -301,6 +674,26 @@
                 }
               }
             }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UniversalResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UniversalResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -308,7 +701,7 @@
     "/gateway/health": {
       "get": {
         "tags": [
-          "Gateway Invocation"
+          "Gateway Invocation & STS Tokens"
         ],
         "summary": "Probe STS credentials and local backend health",
         "operationId": "GatewayHealth",
@@ -334,6 +727,106 @@
   },
   "components": {
     "schemas": {
+      "AppStsInspectResponse": {
+        "type": "object",
+        "properties": {
+          "isValid": {
+            "type": "boolean"
+          },
+          "appId": {
+            "type": "string",
+            "nullable": true
+          },
+          "isAdmin": {
+            "type": "boolean"
+          },
+          "issuedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "expiresInSeconds": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "isExpired": {
+            "type": "boolean"
+          },
+          "scope": {
+            "type": "string",
+            "nullable": true
+          },
+          "callerId": {
+            "type": "string",
+            "nullable": true
+          },
+          "error": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AppStsTokenResponse": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "nullable": true
+          },
+          "tokenType": {
+            "type": "string",
+            "nullable": true
+          },
+          "appId": {
+            "type": "string",
+            "nullable": true
+          },
+          "durationSeconds": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "issuedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "scope": {
+            "type": "string",
+            "nullable": true
+          },
+          "isAdmin": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "BedrockNativeGuardrailOptions": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "guardrailIdentifier": {
+            "type": "string",
+            "nullable": true
+          },
+          "guardrailVersion": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "CreateAppRequest": {
         "type": "object",
         "properties": {
@@ -376,6 +869,13 @@
           "fallbackModel": {
             "type": "string",
             "nullable": true
+          },
+          "allowedCidrs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -394,6 +894,61 @@
           "details": {
             "type": "string",
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "GuardrailActionMode": {
+        "enum": [
+          0,
+          1,
+          2
+        ],
+        "type": "integer",
+        "format": "int32"
+      },
+      "GuardrailOptions": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/GuardrailActionMode"
+          },
+          "scanOutputs": {
+            "type": "boolean"
+          },
+          "outputMode": {
+            "$ref": "#/components/schemas/GuardrailActionMode"
+          },
+          "pci": {
+            "$ref": "#/components/schemas/PciGuardrailOptions"
+          },
+          "pii": {
+            "$ref": "#/components/schemas/PiiGuardrailOptions"
+          },
+          "secrets": {
+            "$ref": "#/components/schemas/SecretsGuardrailOptions"
+          },
+          "promptInjection": {
+            "$ref": "#/components/schemas/PromptInjectionOptions"
+          },
+          "bedrockGuardrails": {
+            "$ref": "#/components/schemas/BedrockNativeGuardrailOptions"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GuardrailTestRequest": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "string",
+            "nullable": true
+          },
+          "mode": {
+            "$ref": "#/components/schemas/GuardrailActionMode"
           }
         },
         "additionalProperties": false
@@ -431,6 +986,60 @@
         },
         "additionalProperties": false
       },
+      "PciGuardrailOptions": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "maskCreditCards": {
+            "type": "boolean"
+          },
+          "maskIban": {
+            "type": "boolean"
+          },
+          "maskCvv": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PiiGuardrailOptions": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "maskSsn": {
+            "type": "boolean"
+          },
+          "maskEmails": {
+            "type": "boolean"
+          },
+          "maskPhoneNumbers": {
+            "type": "boolean"
+          },
+          "maskPassports": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PromptInjectionOptions": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "blockJailbreaks": {
+            "type": "boolean"
+          },
+          "blockSystemOverrides": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
       "RequestMetadata": {
         "type": "object",
         "properties": {
@@ -456,6 +1065,37 @@
           }
         },
         "additionalProperties": { }
+      },
+      "RotateKeyRequest": {
+        "type": "object",
+        "properties": {
+          "gracePeriodDays": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SecretsGuardrailOptions": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "maskAwsKeys": {
+            "type": "boolean"
+          },
+          "maskPrivateKeys": {
+            "type": "boolean"
+          },
+          "maskJwtTokens": {
+            "type": "boolean"
+          },
+          "maskGenericApiKeys": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
       },
       "TokenUsage": {
         "type": "object",
@@ -591,6 +1231,13 @@
           },
           "fallbackModel": {
             "type": "string",
+            "nullable": true
+          },
+          "allowedCidrs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
             "nullable": true
           },
           "isActive": {

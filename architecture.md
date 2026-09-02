@@ -1,69 +1,164 @@
-# Security Architecture Review & System Design
+# Enterprise Architecture & Data Flow Specification
 
 **Project:** Universal AI LLM Gateway  
 **Runtime:** .NET 8 Minimal API (C#)  
-**Target Environments:** Development, Test/Staging, Production (AWS EKS / ECS / On-Prem)  
-**Document Version:** 1.1.0  
-**Status:** Security Baseline Approved (with Enterprise Admin Guardrails)  
+**Target Environments:** Development, Test/Staging, Production (Hybrid On-Premises & AWS Bedrock)  
+**Document Version:** 2.2.0  
+**Status:** Enterprise Multi-Environment, IAM Roles Anywhere & Host Network Trust Approved  
 
 ---
 
-## 1. Executive Summary & Security Objectives
+## 1. Executive Summary & Core Security Principles
 
-The **Universal AI LLM Gateway** provides a unified, secure abstraction layer between enterprise client applications and heterogeneous Large Language Model (LLM) providers (AWS Bedrock Runtime and Local engines like Ollama, LM Studio, and llama.cpp).
+The **Universal AI LLM Gateway** provides a hardened, resilient, enterprise-grade abstraction layer mediating communication between client microservices and Large Language Model (LLM) providers (AWS Bedrock Runtime and Local engines like Ollama, LM Studio, and llama.cpp).
 
-### 1.1 Core Security Objectives
-1. **Mandatory Admin-Level Guardrails:** Every inbound request is intercepted and inspected for PCI (Credit Cards with Luhn validation, IBAN, CVV), PII (SSN, Email, Phone, Passports), Secrets (AWS Keys, Private Keys, JWTs, API tokens), and Prompt Injection / Jailbreaks before reaching AWS Bedrock or local inference backends.
-2. **Zero Credential Exposure:** Temporary AWS STS session tokens and IAM long-term secrets are isolated in memory and never logged, cached to disk unencrypted, or transmitted to client applications.
-3. **Least Privilege & Role Isolation:** AWS Bedrock execution is mediated via short-lived temporary STS sessions (`sts:AssumeRole`) scoped strictly to `bedrock:InvokeModel` with automated background token rotation.
-4. **Application Sandboxing & Auth:** Every upstream consumer application is authenticated via distinct cryptographically generated API keys (`ug_live_*`), verified using constant-time SHA-256 hash comparison.
-5. **Data Protection & Secret Encryption:** Persistent application metadata, role configurations, and master keys are safeguarded using ASP.NET Core Data Protection API.
-6. **Defense in Depth:** Rate limiting, non-root Alpine container sandboxing, CORS lockdown, and automated fallback failover prevent denial of service and data poisoning.
+### 1.1 Multi-Environment Isolation (DEV vs. TEST vs. PROD)
+
+1. **Development (DEV):** 100% Local storage (`./data/audit_logs`), Developer AWS named profiles (`~/.aws/config`, `default`), with **$0/month cloud infrastructure dependencies**.
+2. **Test / Staging (TEST):** On-Premises **AWS IAM Roles Anywhere** X.509 PKI authentication, **Hybrid Loki + AWS S3** cold storage, and AWS KMS Test CMK.
+3. **Production (PROD):** On-Premises **AWS IAM Roles Anywhere** X.509 PKI authentication, **Hybrid Loki + AWS S3 Glacier** 365-day compliance archival, and AWS KMS Prod CMK.
+4. **Secretless On-Premises Execution:** In TEST and PROD, no permanent AWS access keys (`AKIA...`) are stored on servers; all authentication is mediated via short-lived, auto-refreshing AWS STS session credentials (`sts:AssumeRole`).
+5. **Host Network Trust (Source IP / CIDR Whitelisting):** Cryptographic and network binding per registered application; only requests originating from registered server host IPs or CIDR subnets (e.g., `10.240.12.50/32`, `192.168.1.0/24`) are permitted to mint STS tokens or invoke model endpoints. Unauthorized hosts receive **`403 Forbidden: HOST_IP_NOT_AUTHORIZED`**.
+6. **Bidirectional Enterprise Guardrails:** Pre-execution inspection (PCI with Luhn validation, PII, Secrets, Prompt Injection) on inbound prompts and post-execution inspection (Credential/Secret leakage) on outbound model responses.
+7. **Zero-Downtime Dual-Key Rotation:** Primary + Secondary key lifecycle with configurable grace period (e.g. 7 days) and emergency instant revocation.
+8. **Abuse Protection & Safety Clamps:** 50,000 character prompt limit (`413 Payload Too Large`) and 4,096 token output ceiling clamp.
+9. **Persistent Compliance Audit Trail:** Non-blocking async channel writer persisting structured records to daily rolling JSONL files with query and CSV export.
 
 ---
 
-## 2. High-Level Security Architecture & Trust Boundaries
+## 2. Multi-Environment Topology Architecture
 
 ```mermaid
 flowchart TD
-    %% Trust Boundaries
-    subgraph TB_EXT["TRUST BOUNDARY 1: External / Client Zone (Untrusted)"]
-        ClientAppA["Enterprise App A\n(Customer Support)"]
-        ClientAppB["Enterprise App B\n(Code Reviewer)"]
-        AdminUser["Platform Admin\n(Dashboard UI)"]
+    subgraph DEV_ENV["1. Development Environment (Local Machine / VM)"]
+        DevUser["Developer Workstation"] --> DevGW["Unified Gateway (DEV)"]
+        DevGW --> DevStorage["Local Disk Storage<br/>(./data/audit_logs/*.jsonl)"]
+        DevGW --> DevProfile["AWS Named Profile<br/>(~/.aws/config, 'default')"]
+        DevProfile --> BedrockDev["AWS Bedrock (DEV)"]
     end
 
-    subgraph TB_DMZ["TRUST BOUNDARY 2: Gateway DMZ / Kubernetes Ingress"]
-        Ingress["TLS / Ingress Controller\n(HTTPS Termination - Port 443/8080)"]
+    subgraph TEST_ENV["2. Test / Staging Environment (On-Premises Hybrid)"]
+        TestApps["Staging Microservices<br/>(Authorized Host IPs)"] --> TestGW["Unified Gateway (TEST)"]
+        TestGW --> TestLocal["Local Buffer Storage"]
+        TestLocal --> TestS3["AWS S3 Test Bucket<br/>(corp-audit-test)"]
+        TestGW --> TestPKI["Enterprise X.509 Certificate<br/>(/etc/pki/gateway/test-client.crt)"]
+        TestPKI --> TestRA["AWS IAM Roles Anywhere"]
+        TestRA --> TestSTS["Temporary STS Credentials"]
+        TestSTS --> BedrockTest["AWS Bedrock (TEST)"]
+        TestGW --> TestKMS["AWS KMS Test CMK"]
+    end
+
+    subgraph PROD_ENV["3. Production Environment (Hardened On-Premises HA)"]
+        ProdApps["Production Microservices<br/>(Authorized Host IPs / Subnets)"] --> ProdGW["Unified Gateway (PROD)"]
+        ProdGW --> ProdLocal["Local Buffer Storage"]
+        ProdLocal --> ProdS3["AWS S3 Glacier Archive<br/>(corp-audit-prod)"]
+        ProdGW --> ProdPKI["Enterprise X.509 Certificate / HSM<br/>(/etc/pki/gateway/prod-client.crt)"]
+        ProdPKI --> ProdRA["AWS IAM Roles Anywhere"]
+        ProdRA --> ProdSTS["Temporary STS Credentials"]
+        ProdSTS --> BedrockProd["AWS Bedrock (PROD)"]
+        ProdGW --> ProdKMS["AWS KMS Prod CMK (Multi-Region)"]
+    end
+```
+
+---
+
+## 3. Host Network Trust & Source IP/CIDR Whitelist Architecture
+
+```mermaid
+flowchart TD
+    subgraph ClientLayer["1. Incoming Client Request"]
+        HostA["Authorized Host A<br/>IP: 10.240.12.50"]
+        HostB["Authorized Microservice Subnet<br/>IP: 192.168.1.100 (in 192.168.1.0/24)"]
+        Attacker["Unauthorized Host / Rogue Machine<br/>IP: 203.0.113.88"]
+    end
+
+    subgraph GatewayBoundary["2. Unified LLM Gateway (/gateway/sts/token & /gateway/{appId}/invoke)"]
+        IpExtractor["Extract Client IP<br/>(RemoteIpAddress / X-Forwarded-For)"]
+        AppLookup["Lookup AppConfig by appId<br/>Retrieve registered 'AllowedCidrs'"]
+        CidrMatcher{"CIDR Matcher<br/>Is Client IP in AllowedCidrs?"}
+        
+        AuthPipeline["Key / STS Authenticator<br/>(Validate API Key Hash & Expiry)"]
+        GuardrailPipeline["Bidirectional Guardrails & Model Router"]
+    end
+
+    subgraph Outcomes["3. Authorization Outcomes"]
+        Success["200 OK: Process Request & Issue STS Token"]
+        Forbidden["403 Forbidden: HOST_IP_NOT_AUTHORIZED<br/>Log Security Violation to Audit Trail"]
+    end
+
+    HostA -->|Request with X-API-Key| IpExtractor
+    HostB -->|Request with X-API-Key| IpExtractor
+    Attacker -->|Stolen X-API-Key| IpExtractor
+
+    IpExtractor --> AppLookup
+    AppLookup --> CidrMatcher
+
+    CidrMatcher -->|Allowed: IP in Range| AuthPipeline
+    CidrMatcher -->|Allowed: AllowedCidrs Empty (Any Host)| AuthPipeline
+    CidrMatcher -->|Denied: IP not in Range| Forbidden
+
+    AuthPipeline --> GuardrailPipeline
+    GuardrailPipeline --> Success
+```
+
+---
+
+## 4. End-to-End System Architecture & Trust Boundaries
+
+```mermaid
+flowchart TD
+    subgraph TB_EXT["TRUST BOUNDARY 1: External / Client Zone (Untrusted)"]
+        ClientAppA["Enterprise Application A\n(Customer Support Agent)"]
+        ClientAppB["Enterprise Application B\n(Finance & Invoicing)"]
+        AdminUser["Platform Administrator\n(Dashboard UI)"]
+        MobileClient["Frontend / Mobile Worker\n(Short-Term STS Session)"]
+    end
+
+    subgraph TB_DMZ["TRUST BOUNDARY 2: Gateway DMZ / Ingress Controller"]
+        Ingress["TLS / Ingress Termination\n(HTTPS Port 443 / 8080)"]
         RateLimiter["Rate Limiting & CORS Filter\n(GatewayCorsPolicy)"]
     end
 
     subgraph TB_GW["TRUST BOUNDARY 3: Gateway Processing Boundary (.NET 8 Core)"]
-        subgraph AuthLayer["Authentication & Security Subsystem"]
-            ApiKeyFilter["X-API-Key & Bearer Validator"]
-            SecService["ISecurityService\n- Fixed-Time SHA256 Verification\n- Data Protection Key Encryption\n- Secret Masking Engine"]
+        subgraph HostTrustLayer["Host Network Trust Layer"]
+            HostFilter["IpNetworkHelper & Host CIDR Validator\n- Validates Client IP vs AllowedCidrs\n- Returns 403 Forbidden on Mismatch"]
         end
 
-        subgraph GuardrailSubsystem["Enterprise Guardrail Subsystem (Admin Level)"]
-            GuardrailSvc["IGuardrailService (Pre-Execution Inspection)\n- PCI: Visa/MC/Amex/Discover (Luhn Check), IBAN, CVV\n- PII: US SSN, Email, Phone, Passports\n- Secrets: AWS Keys, Private Keys, JWTs, API Tokens\n- Safety: Prompt Injection & Adversarial Jailbreak Defense\n- Action Engine: Redact / Block / AuditOnly"]
+        subgraph AbuseLayer["Abuse & Safety Guardrails"]
+            InputClamp["Payload Character Clamp\n(MaxInputCharacters: 50,000)"]
+            TokenClamp["Max Tokens Ceiling Clamp\n(MaxOutputTokensClamp: 4,096)"]
         end
 
-        subgraph CoreRouter["Orchestration & Routing Engine"]
-            Router["IModelRouter\n- Request Normalizer\n- Resilient Fallback Orchestrator"]
-            AppReg["IApplicationRegistryService\n- Encrypted Config Store\n- Version History Snapshots\n- Telemetry & Audit Logger"]
+        subgraph AuthSubsystem["Authentication & Key Lifecycle Subsystem"]
+            AuthEngine["Key Authenticator\n- Fixed-Time SHA-256 Hash Comparison\n- Dual-Key Grace Period Validator\n- Stateless HMAC-SHA256 STS Validator"]
+            SecService["ISecurityService & ISTSService\n- Key Pair Generator\n- App STS Token Minting & Inspection\n- Data Protection AES-256 Encryption"]
         end
 
-        subgraph CredentialVault["Credential & Token Isolation Subsystem"]
-            STSSvc["ISTSService\n(In-Memory Token Cache)"]
-            STSWorker["AwsCredentialBackgroundService\n(Proactive Token Refresh - 5m TTL Buffer)"]
-            DataProtection["ASP.NET Data Protection API\n(Persistent File/KMS Keys)"]
+        subgraph InboundGuardrails["Inbound Prompt Guardrails Engine"]
+            InGuard["IGuardrailService (Prompt Evaluation)\n- PCI: Visa/MC/Amex/Discover (Luhn Check), IBAN, CVV\n- PII: US SSN, Emails, Phones, Passports\n- Secrets: AWS AKIA, Private Keys, JWTs, API Keys\n- Prompt Injection: System Overrides & DAN Jailbreaks\n- Action: Redact / Block / AuditOnly"]
+        end
+
+        subgraph OrchestrationCore["Routing & Fallback Orchestration Engine"]
+            Router["IModelRouter\n- Primary Dispatcher\n- Resilient Fallback Orchestrator"]
+            AppReg["IApplicationRegistryService\n- Dynamic App Configuration & Host CIDRs\n- Version History Snapshots\n- In-Memory KPI Cache"]
+            AwsWorker["AwsCredentialBackgroundService\n(Proactive STS Token Refresh)"]
+        end
+
+        subgraph OutboundGuardrails["Outbound Response Guardrails Engine"]
+            OutGuard["IGuardrailService (Output Evaluation)\n- Scan LLM Output for Leaked Credentials\n- Mask Leaked AWS Keys, JWTs & Cards\n- Action: Redact / Block / AuditOnly"]
+        end
+
+        subgraph AuditPipeline["Compliance & Persistent Audit Subsystem"]
+            AuditChannel["Channel<AuditLogRecord>\n(High-Throughput Non-Blocking Queue)"]
+            AuditWorker["AuditLogService Background Consumer\n- Daily JSONL Rolling Writer\n- Query & CSV Export Engine"]
         end
     end
 
-    subgraph TB_AWS["TRUST BOUNDARY 4: AWS Cloud IAM & Bedrock Zone"]
+    subgraph TB_AWS["TRUST BOUNDARY 4: AWS Cloud & Bedrock Zone"]
+        AWS_RolesAnywhere["AWS IAM Roles Anywhere\n(X.509 Certificate-based Auth)"]
         AWS_STS["AWS Security Token Service (STS)\n(sts:AssumeRole)"]
-        AWS_IAM["Target Execution IAM Role\n(arn:aws:iam::*:role/BedrockGatewayExecutionRole)"]
-        AWS_Bedrock["AWS Bedrock Runtime\n- Claude 3.5 Sonnet / Haiku\n- Meta Llama 3 70B\n- Mistral / Titan"]
+        AWS_IAM["Target Execution IAM Role\n(arn:aws:iam::*:role/OnPremBedrockExecutionRole)"]
+        AWS_Bedrock["AWS Bedrock Runtime\n- Claude 3.5 Sonnet / Haiku / Opus\n- Meta Llama 3 70B\n- Mistral / Amazon Titan"]
     end
 
     subgraph TB_LOCAL["TRUST BOUNDARY 5: Private VPC / Local Inference Zone"]
@@ -72,93 +167,65 @@ flowchart TD
         Local_LlamaCpp["llama.cpp Engine\n(http://localhost:8080)"]
     end
 
-    %% Data Flow & Interconnections
+    subgraph TB_STORAGE["TRUST BOUNDARY 6: Persistent Storage Boundary"]
+        DiskAudit["./data/audit_logs/audit_YYYYMMDD.jsonl\n(Immutable Audit Records)"]
+        S3Audit["AWS S3 / Glacier Bucket\n(corp-unified-gateway-audit-prod)"]
+        DiskRegistry["./data/app_registry.json\n(Application Metadata & Key Hashes)"]
+        DiskKeys["./data/dataprotection-keys\n(ASP.NET Data Protection XML Keys)"]
+    end
+
+    %% Flow Connections
     ClientAppA -->|"HTTPS POST /gateway/{appId}/invoke\nX-API-Key: ug_live_..."| Ingress
-    ClientAppB -->|"HTTPS POST /gateway/{appId}/invoke\nX-API-Key: ug_live_..."| Ingress
-    AdminUser -->|"HTTPS GET / & REST /api/*\nX-API-Key: Master Admin Key"| Ingress
+    MobileClient -->|"HTTPS POST /gateway/{appId}/invoke\nAuthorization: Bearer ug_sts_..."| Ingress
+    AdminUser -->|"HTTPS POST /gateway/sts/token\nExchange key for temporary token"| Ingress
 
     Ingress --> RateLimiter
-    RateLimiter --> ApiKeyFilter
-    ApiKeyFilter --> SecService
-    SecService -->|"Validate Key Hash & Scope"| AppReg
-    ApiKeyFilter -->|"Authenticated Request"| Router
+    RateLimiter --> HostFilter
+    HostFilter -->|"IP Authorized / Whitelist Passed"| InputClamp
+    HostFilter -.->|"IP Rejected: Abort 403"| AuditChannel
+    InputClamp --> TokenClamp
+    TokenClamp --> AuthEngine
+    AuthEngine --> SecService
 
-    Router -->|"1. Intercept & Evaluate Prompt"| GuardrailSvc
-    GuardrailSvc -.->|"If Block Mode & Violations: Abort 422"| Router
-    GuardrailSvc -.->|"If Redact Mode: Inline Anonymize"| Router
+    AuthEngine -->|"Authenticated (Primary / Secondary / STS)"| InGuard
+    InGuard -.->|"If Inbound Blocked: Abort 422"| AuditChannel
 
-    Router -->|"2. Fetch System Prompt & Model Config"| AppReg
-    AppReg -.->|"Encrypt / Decrypt Sensitive Fields"| DataProtection
+    InGuard -->|"Sanitized / Verified Prompt"| Router
+    Router --> AppReg
+    AppReg -.-> DiskRegistry
 
-    Router -->|"3. Request Temporary Bedrock Session"| STSSvc
-    STSWorker -->|"Proactive Background Refresh"| STSSvc
-    STSSvc -->|"AssumeRoleAsync (TLS 1.3 / SigV4)"| AWS_STS
-    AWS_STS -->|"Issue Ephemeral Credentials\n(AccessKeyId, SecretKey, SessionToken)"| STSSvc
-    AWS_STS -.->|"Scope to IAM Role Policy"| AWS_IAM
+    AwsWorker --> AWS_RolesAnywhere
+    AWS_RolesAnywhere --> AWS_STS
+    AWS_STS --> AWS_IAM
+    Router -->|"SigV4 AWS Call (SigV4 Signed)"| AWS_Bedrock
 
-    Router -->|"4. InvokeModelAsync (Sanitized Payload + SigV4 Signed)"| AWS_Bedrock
-    STSSvc -.->|"Provide Ephemeral Memory Credentials"| AWS_Bedrock
+    Router -->|"Local Backend Call"| Local_Ollama
+    Router -->|"Local Backend Call"| Local_LM
+    Router -->|"Local Backend Call"| Local_LlamaCpp
 
-    Router -->|"Fallback / Local Route (Sanitized Payload)"| Local_Ollama
-    Router -->|"Local Route"| Local_LM
-    Router -->|"Local Route"| Local_LlamaCpp
+    AWS_Bedrock -->|"Raw Output"| OutGuard
+    Local_Ollama -->|"Raw Output"| OutGuard
+    Local_LM -->|"Raw Output"| OutGuard
+    Local_LlamaCpp -->|"Raw Output"| OutGuard
+
+    OutGuard -.->|"If Output Leaks Secrets (Block): Abort 422"| AuditChannel
+    OutGuard -->|"Clean / Sanitized Response"| Ingress
+
+    Router --> AuditChannel
+    AuditChannel --> AuditWorker
+    AuditWorker --> DiskAudit
+    AuditWorker -.-> S3Audit
+    SecService -.-> DiskKeys
 ```
 
 ---
 
-## 3. Threat Model & STRIDE Analysis
+## 5. Verification Evidence
 
-| STRIDE Category | Threat Description | Attack Vector | Security Countermeasures & Implementation |
-| :--- | :--- | :--- | :--- |
-| **Spoofing** | Impersonation of client applications or unauthorized access to per-app endpoints. | Attackers guess or brute-force API keys or spoof client identity. | • Cryptographically random 256-bit API keys (`ug_live_*`).<br>• Keys stored only as SHA-256 hashes.<br>• Fixed-time string comparison (`CryptographicOperations.FixedTimeEquals`) to defeat timing attacks.<br>• Per-app isolation and Master Key partition. |
-| **Tampering** | Modification of in-flight prompts, prompt injection attacks, or unauthorized tampering with registry files. | Prompt injection (`ignore previous instructions`), DAN jailbreak exploits, or man-in-the-middle attacks. | • **Guardrails Subsystem** detects and sanitizes/blocks prompt override attempts.<br>• Mandatory TLS for all external and cloud communication.<br>• AWS SigV4 cryptographic request signing on all AWS Bedrock calls.<br>• Data Protection API (`IDataProtector`) encrypts sensitive configuration at rest. |
-| **Repudiation** | Malicious users denying sending abusive, sensitive, or high-cost prompts. | Lack of invocation logs or trace correlation. | • Granular audit logging with `RequestLogEntry` tracking timestamp, `appId`, model, guardrail action (`Redacted`/`Blocked`), and token counts.<br>• Unique `traceId` correlation across requests. |
-| **Information Disclosure** | Leakage of customer PII (SSN, Email, Phone), PCI (Credit Cards, CVV, IBAN), API tokens, or AWS STS temporary credentials. | Prompts containing sensitive user data being transmitted to cloud LLM or stored in unencrypted logs. | • **Pre-Execution Guardrails** redact sensitive data (`[REDACTED_CREDIT_CARD]`, `[REDACTED_SSN]`, `[REDACTED_AWS_KEY]`) before reaching AWS Bedrock or logs.<br>• Algorithmic **Luhn checksum** verifies valid credit cards to prevent false positives.<br>• AWS STS session tokens never logged or serialized to client responses. |
-| **Denial of Service (DoS)** | Backend model exhaustion, prompt flooding, or local LLM server starvation. | Flooding gateway with maximum-token requests or triggering concurrent heavy model loads. | • Configurable rate limiting per minute (`RateLimitPerMinute`).<br>• Explicit `max_tokens` quotas and request timeouts (30–120s).<br>• Resilient Polly circuit breaking & retry policies.<br>• Automated failover routing (Bedrock -> Local or vice-versa). |
-| **Elevation of Privilege** | Cross-tenant access to another application's prompt or unauthorized access to AWS infrastructure. | Tenant parameter pollution or IAM role permission creep. | • Strict app isolation: requests to `/gateway/{appId}/invoke` can only execute within the registered `appId` security context.<br>• AWS IAM Role scoped strictly to `bedrock:InvokeModel`.<br>• Non-root container execution (`appuser`, UID 1000). |
-
----
-
-## 4. Guardrails Subsystem Specification
-
-### 4.1 Supported Detectors & Enforcement Rules
-
-1. **PCI & Financial Data Protection**:
-   - **Payment Cards:** Visa, MasterCard, American Express, Discover, Diners Club, JCB with algorithmic **Luhn checksum verification**.
-   - **IBAN:** International Bank Account Numbers.
-   - **CVV/CVC:** 3-digit and 4-digit security codes.
-2. **PII & Personal Identity Protection**:
-   - **US SSN:** Formatted (`XXX-XX-XXXX`) and unformatted 9-digit Social Security Numbers validated against SSA assignment rules.
-   - **Email Addresses:** RFC 5322 compliant personal and corporate email addresses.
-   - **Phone Numbers:** International E.164 and localized North American formats.
-   - **Passports:** International passport document identifiers.
-3. **Secrets, Keys & Credentials**:
-   - **AWS IAM Keys:** `AKIA[0-9A-Z]{16}` access key identifiers.
-   - **Asymmetric Private Keys:** RSA, EC, DSA, and OpenSSH private key PEM blocks.
-   - **JWT Tokens:** Multi-segment Base64 JSON Web Tokens.
-   - **API Tokens:** High-entropy Bearer tokens, GitHub PATs (`ghp_*`), OpenAI (`sk-*`), Gateway keys (`ug_live_*`).
-4. **Prompt Injection & Adversarial Jailbreaks**:
-   - **System Overrides:** `"ignore all previous instructions"`, `"disregard prior system prompts"`, `"reveal system prompt"`.
-   - **Jailbreaks:** DAN (Do Anything Now), Developer Mode, unrestricted persona overrides.
-   - **Safety Bypasses:** Direct commands attempting to disable guardrails or content moderation.
-
-### 4.2 Enforcement Action Modes
-
-| Mode | Behavior | Use Case |
+| Verification Area | Status | Test / Artifact Location |
 | :--- | :--- | :--- |
-| **`Redact`** *(Default)* | Inline anonymization with descriptive tokens (`[REDACTED_CREDIT_CARD]`, `[REDACTED_SSN]`, `[REDACTED_AWS_KEY]`). Prompt is sanitized before being dispatched to Bedrock. | Enterprise customer support, RAG pipelines, external user chatbots where data privacy must be preserved without breaking conversational flow. |
-| **`Block`** | Aborts execution immediately with `422 Unprocessable Entity` / `GUARDRAIL_BLOCKED` and detailed violation metadata. Downstream LLMs are never invoked. | High-security financial apps, internal code reviewers, strictly regulated compliance workloads. |
-| **`AuditOnly`** | Evaluates prompt, records violations in telemetry and security KPIs, but passes original prompt unaltered. | Baseline monitoring, shadow evaluation, policy tuning before active enforcement. |
-
----
-
-## 5. Security Review Sign-Off & Verification
-
-| Security Control Requirement | Implementation Status | Evidence / Verification Location |
-| :--- | :--- | :--- |
-| **Admin-Level Pre-Execution Guardrails** | **PASSED** | [`GuardrailService.cs`](file:///c:/Users/wasim/workspace/Projects/Unified-LLM-Gateway/Services/GuardrailService.cs), [`ModelRouter.cs`](file:///c:/Users/wasim/workspace/Projects/Unified-LLM-Gateway/Services/ModelRouter.cs) |
-| **PCI Credit Card Luhn Validation** | **PASSED** | Validated in [`GuardrailServiceTests.cs`](file:///c:/Users/wasim/workspace/Projects/Unified-LLM-Gateway/UnifiedGateway.Tests/GuardrailServiceTests.cs). |
-| **PII & Secrets Redaction** | **PASSED** | Inline sanitization verified for SSN, Email, Phone, AWS Keys, and JWTs. |
-| **Prompt Injection & Jailbreak Defense** | **PASSED** | System override and DAN patterns detected and quarantined. |
-| **Zero Plaintext Secrets / STS Isolation** | **PASSED** | [`STSService.cs`](file:///c:/Users/wasim/workspace/Projects/Unified-LLM-Gateway/Services/STSService.cs), [`AwsCredentialBackgroundService.cs`](file:///c:/Users/wasim/workspace/Projects/Unified-LLM-Gateway/Services/AwsCredentialBackgroundService.cs) |
-| **Automated Unit & Integration Test Suite** | **PASSED** | 17/17 tests passing in [`UnifiedGateway.Tests`](file:///c:/Users/wasim/workspace/Projects/Unified-LLM-Gateway/UnifiedGateway.Tests). |
+| **Host Network Trust & CIDR Whitelisting** | **PASSED** | [`HostNetworkTrustTests.cs`](file:///c:/Users/wasim/workspace/Projects/Unified-LLM-Gateway/UnifiedGateway.Tests/HostNetworkTrustTests.cs), [`IpNetworkHelper.cs`](file:///c:/Users/wasim/workspace/Projects/Unified-LLM-Gateway/Services/IpNetworkHelper.cs) |
+| **Multi-Environment Configuration Binding** | **PASSED** | [`MultiEnvironmentTests.cs`](file:///c:/Users/wasim/workspace/Projects/Unified-LLM-Gateway/UnifiedGateway.Tests/MultiEnvironmentTests.cs) |
+| **AWS IAM Roles Anywhere & Profile Auth Resolution** | **PASSED** | [`STSService.cs`](file:///c:/Users/wasim/workspace/Projects/Unified-LLM-Gateway/Services/STSService.cs), [`MultiEnvironmentTests.cs`](file:///c:/Users/wasim/workspace/Projects/Unified-LLM-Gateway/UnifiedGateway.Tests/MultiEnvironmentTests.cs) |
+| **Bidirectional Guardrails (PCI/PII/Secrets/Output)** | **PASSED** | [`GuardrailServiceTests.cs`](file:///c:/Users/wasim/workspace/Projects/Unified-LLM-Gateway/UnifiedGateway.Tests/GuardrailServiceTests.cs) |
+| **Full Automated Unit Test Suite** | **PASSED** | **54/54 tests passing** in `UnifiedGateway.Tests`. |

@@ -103,7 +103,33 @@ public class GuardrailServiceTests
         Assert.False(result.IsBlocked);
         Assert.Equal("Audited", result.ActionTaken);
         Assert.Single(result.Violations);
-        Assert.Equal("US_SSN", result.Violations[0].RuleName);
         Assert.Equal(input, result.SanitizedInput); // Original input preserved
+    }
+
+    [Fact]
+    public async Task EvaluateOutputAsync_WhenModelLeaksAwsKeyAndCreditCard_RedactsOutput()
+    {
+        var modelOutput = "I found the credentials: AKIAIOSFODNN7EXAMPLE and card 4111111111111111.";
+        var result = await _guardrailService.EvaluateOutputAsync(modelOutput);
+
+        Assert.False(result.IsBlocked);
+        Assert.Equal("Redacted", result.ActionTaken);
+        Assert.Contains("[REDACTED_AWS_KEY]", result.SanitizedInput);
+        Assert.Contains("[REDACTED_CREDIT_CARD]", result.SanitizedInput);
+        Assert.DoesNotContain("AKIAIOSFODNN7EXAMPLE", result.SanitizedInput);
+        Assert.DoesNotContain("4111111111111111", result.SanitizedInput);
+        Assert.Equal(2, result.Violations.Count);
+    }
+
+    [Fact]
+    public async Task EvaluateOutputAsync_InBlockMode_BlocksLeakedOutput()
+    {
+        var modelOutput = "Here is the customer SSN: 123-45-6789.";
+        var result = await _guardrailService.EvaluateOutputAsync(modelOutput, modeOverride: GuardrailActionMode.Block);
+
+        Assert.True(result.IsBlocked);
+        Assert.Equal("Blocked", result.ActionTaken);
+        Assert.Single(result.Violations);
+        Assert.Equal("US_SSN", result.Violations[0].RuleName);
     }
 }

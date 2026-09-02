@@ -180,6 +180,141 @@ public partial class GuardrailService : IGuardrailService
         });
     }
 
+    public Task<GuardrailResult> EvaluateOutputAsync(
+        string output,
+        GuardrailActionMode? modeOverride = null,
+        CancellationToken cancellationToken = default)
+    {
+        var sw = Stopwatch.StartNew();
+        GuardrailOptions current;
+        lock (_optionsLock)
+        {
+            current = _options;
+        }
+
+        if (!current.Enabled || !current.ScanOutputs || string.IsNullOrWhiteSpace(output))
+        {
+            sw.Stop();
+            return Task.FromResult(new GuardrailResult
+            {
+                ActionTaken = "Passed",
+                IsBlocked = false,
+                OriginalInput = output,
+                SanitizedInput = output,
+                LatencyMs = sw.ElapsedMilliseconds
+            });
+        }
+
+        var activeMode = modeOverride ?? current.OutputMode;
+        var violations = new List<GuardrailViolationDetail>();
+
+        // 1. PCI Detectors (Credit Cards, CVV, IBAN)
+        if (current.Pci.Enabled)
+        {
+            if (current.Pci.MaskCreditCards)
+                DetectCreditCards(output, violations);
+
+            if (current.Pci.MaskIban)
+                DetectIban(output, violations);
+
+            if (current.Pci.MaskCvv)
+                DetectCvv(output, violations);
+        }
+
+        // 2. PII Detectors (SSN, Emails, Phone, Passports)
+        if (current.Pii.Enabled)
+        {
+            if (current.Pii.MaskSsn)
+                DetectSsn(output, violations);
+
+            if (current.Pii.MaskEmails)
+                DetectEmails(output, violations);
+
+            if (current.Pii.MaskPhoneNumbers)
+                DetectPhoneNumbers(output, violations);
+
+            if (current.Pii.MaskPassports)
+                DetectPassports(output, violations);
+        }
+
+        // 3. Secrets & API Keys
+        if (current.Secrets.Enabled)
+        {
+            if (current.Secrets.MaskAwsKeys)
+                DetectAwsKeys(output, violations);
+
+            if (current.Secrets.MaskPrivateKeys)
+                DetectPrivateKeys(output, violations);
+
+            if (current.Secrets.MaskJwtTokens)
+                DetectJwtTokens(output, violations);
+
+            if (current.Secrets.MaskGenericApiKeys)
+                DetectGenericApiKeys(output, violations);
+        }
+
+        var riskScore = CalculateRiskScore(violations);
+        sw.Stop();
+
+        if (violations.Count == 0)
+        {
+            return Task.FromResult(new GuardrailResult
+            {
+                ActionTaken = "Passed",
+                IsBlocked = false,
+                OriginalInput = output,
+                SanitizedInput = output,
+                RiskScore = 0.0,
+                LatencyMs = sw.ElapsedMilliseconds
+            });
+        }
+
+        _logger.LogWarning("Output Guardrails detected {Count} leaked sensitive items in model output. ActiveMode={ActiveMode}",
+            violations.Count, activeMode);
+
+        if (activeMode == GuardrailActionMode.Block)
+        {
+            return Task.FromResult(new GuardrailResult
+            {
+                ActionTaken = "Blocked",
+                IsBlocked = true,
+                OriginalInput = output,
+                SanitizedInput = output,
+                Violations = violations,
+                RiskScore = riskScore,
+                LatencyMs = sw.ElapsedMilliseconds
+            });
+        }
+
+        if (activeMode == GuardrailActionMode.AuditOnly)
+        {
+            return Task.FromResult(new GuardrailResult
+            {
+                ActionTaken = "Audited",
+                IsBlocked = false,
+                OriginalInput = output,
+                SanitizedInput = output,
+                Violations = violations,
+                RiskScore = riskScore,
+                LatencyMs = sw.ElapsedMilliseconds
+            });
+        }
+
+        // Default: Redact leaked tokens in model output
+        var sanitized = RedactSensitiveData(output, violations);
+
+        return Task.FromResult(new GuardrailResult
+        {
+            ActionTaken = "Redacted",
+            IsBlocked = false,
+            OriginalInput = output,
+            SanitizedInput = sanitized,
+            Violations = violations,
+            RiskScore = riskScore,
+            LatencyMs = sw.ElapsedMilliseconds
+        });
+    }
+
     #region PCI Detection (with Luhn Algorithm Check)
 
     // Regex for potential credit card sequences (13 to 19 digits, with optional hyphens/spaces)

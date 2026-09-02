@@ -11,6 +11,8 @@ public static class DashboardEndpoints
         var group = app.MapGroup("/api")
             .WithTags("Dashboard & Management");
 
+        #region Application Management Endpoints
+
         // List applications
         group.MapGet("/apps", async (IApplicationRegistryService registry, CancellationToken ct) =>
         {
@@ -27,7 +29,7 @@ public static class DashboardEndpoints
         })
         .WithName("GetApplication");
 
-        // Create new application (generates endpoint and API key)
+        // Create new application (generates endpoint, API key, and initial STS token)
         group.MapPost("/apps", async ([FromBody] CreateAppRequest request, IApplicationRegistryService registry, CancellationToken ct) =>
         {
             try
@@ -58,6 +60,70 @@ public static class DashboardEndpoints
         })
         .WithName("DeleteApplication");
 
+        // Mint short temporary secret (STS token) for an application from dashboard
+        group.MapPost("/apps/{appId}/sts-token", async (
+            string appId,
+            [FromQuery] int? durationSeconds,
+            [FromQuery] string? scope,
+            IApplicationRegistryService registry,
+            CancellationToken ct) =>
+        {
+            var app = await registry.GetAppAsync(appId, ct);
+            if (app == null)
+            {
+                return Results.NotFound(new { error = "Application not found" });
+            }
+
+            var tokenResp = await registry.MintStsTokenDirectAsync(
+                appId,
+                durationSeconds ?? 3600,
+                scope ?? "invoke",
+                isAdmin: false,
+                callerId: "DashboardUser",
+                cancellationToken: ct);
+
+            return Results.Ok(tokenResp);
+        })
+        .WithName("MintAppStsToken");
+
+        // Rotate Application API Key (Zero-Downtime with Grace Period)
+        group.MapPost("/apps/{appId}/rotate-key", async (
+            string appId,
+            [FromBody] RotateKeyRequest? request,
+            IApplicationRegistryService registry,
+            CancellationToken ct) =>
+        {
+            var graceDays = request?.GracePeriodDays ?? 7;
+            var rotateResp = await registry.RotateAppApiKeyAsync(appId, graceDays, ct);
+
+            if (rotateResp == null)
+            {
+                return Results.NotFound(new { error = "Application not found" });
+            }
+
+            return Results.Ok(rotateResp);
+        })
+        .WithName("RotateAppApiKey")
+        .WithSummary("Rotate primary application API key while keeping previous key as secondary grace-period key");
+
+        // Revoke Secondary Application API Key (Emergency Revocation)
+        group.MapPost("/apps/{appId}/revoke-secondary-key", async (
+            string appId,
+            IApplicationRegistryService registry,
+            CancellationToken ct) =>
+        {
+            var revokeResp = await registry.RevokeSecondaryApiKeyAsync(appId, ct);
+
+            if (revokeResp == null)
+            {
+                return Results.NotFound(new { error = "Application not found" });
+            }
+
+            return Results.Ok(revokeResp);
+        })
+        .WithName("RevokeSecondaryApiKey")
+        .WithSummary("Immediately revoke secondary grace-period key for an application");
+
         // Test application invocation from dashboard
         group.MapPost("/apps/{appId}/test", async (
             string appId,
@@ -70,13 +136,68 @@ public static class DashboardEndpoints
         })
         .WithName("TestApplication");
 
-        // Real-time metrics and analytics
+        #endregion
+
+        #region Telemetry, Analytics & Audit Endpoints
+
+        // Real-time metrics and analytics summary
         group.MapGet("/metrics", async (IApplicationRegistryService registry, CancellationToken ct) =>
         {
             var summary = await registry.GetMetricsSummaryAsync(ct);
             return Results.Ok(summary);
         })
         .WithName("GetMetrics");
+
+        // Query persistent compliance audit logs
+        group.MapGet("/audit/logs", async (
+            [FromQuery] string? appId,
+            [FromQuery] DateTimeOffset? fromDate,
+            [FromQuery] DateTimeOffset? toDate,
+            [FromQuery] string? status,
+            [FromQuery] int? limit,
+            [FromQuery] int? skip,
+            IAuditLogService auditService,
+            CancellationToken ct) =>
+        {
+            var query = new AuditLogQueryRequest
+            {
+                AppId = appId,
+                FromDate = fromDate,
+                ToDate = toDate,
+                Status = status,
+                Limit = limit ?? 50,
+                Skip = skip ?? 0
+            };
+
+            var result = await auditService.QueryLogsAsync(query, ct);
+            return Results.Ok(result);
+        })
+        .WithName("QueryAuditLogs")
+        .WithSummary("Query persistent compliance audit logs from disk with date and app filtering");
+
+        // Export compliance audit log as CSV
+        group.MapGet("/audit/export", async (
+            [FromQuery] string? appId,
+            [FromQuery] DateTimeOffset? fromDate,
+            [FromQuery] DateTimeOffset? toDate,
+            [FromQuery] string? status,
+            IAuditLogService auditService,
+            CancellationToken ct) =>
+        {
+            var query = new AuditLogQueryRequest
+            {
+                AppId = appId,
+                FromDate = fromDate,
+                ToDate = toDate,
+                Status = status
+            };
+
+            var csv = await auditService.ExportLogsCsvAsync(query, ct);
+            var fileName = $"audit_export_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv";
+            return Results.File(System.Text.Encoding.UTF8.GetBytes(csv), "text/csv", fileName);
+        })
+        .WithName("ExportAuditLogs")
+        .WithSummary("Export persistent audit log trail as CSV file");
 
         // List supported and available models across Bedrock and Local
         group.MapGet("/models", async (ILocalModelService localService, CancellationToken ct) =>
@@ -111,6 +232,8 @@ public static class DashboardEndpoints
         })
         .WithName("GetCredentialStatus");
 
+        #endregion
+
         #region Guardrails Management Endpoints
 
         // Get Guardrail Configuration
@@ -131,7 +254,7 @@ public static class DashboardEndpoints
         .WithName("UpdateGuardrailConfig")
         .WithSummary("Update enterprise guardrail rules, PCI/PII detectors, and enforcement mode (Block/Redact/Audit)");
 
-        // Test text against Guardrail inspection sandbox
+        // Test text against Inbound Guardrail inspection sandbox
         group.MapPost("/guardrails/test", async (
             [FromBody] GuardrailTestRequest request,
             IGuardrailService guardrailService,
@@ -146,6 +269,22 @@ public static class DashboardEndpoints
         })
         .WithName("TestGuardrails")
         .WithSummary("Interactive sandbox to test text against PCI, PII, Secrets, and Injection guardrails");
+
+        // Test text against Outbound Model Response Guardrail inspection sandbox
+        group.MapPost("/guardrails/test-output", async (
+            [FromBody] GuardrailTestRequest request,
+            IGuardrailService guardrailService,
+            CancellationToken ct) =>
+        {
+            var result = await guardrailService.EvaluateOutputAsync(
+                request.Input,
+                modeOverride: request.Mode,
+                cancellationToken: ct);
+
+            return Results.Ok(result);
+        })
+        .WithName("TestOutputGuardrails")
+        .WithSummary("Interactive sandbox to test simulated model response text for leaked credentials/PII");
 
         #endregion
     }

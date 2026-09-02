@@ -99,12 +99,12 @@ public class ApplicationRegistryService : IApplicationRegistryService
             ApiKeyHash = hash2,
             ApiKeyPrefix = prefix2,
             Provider = "bedrock",
-            Model = "meta.llama3-70b-instruct-v1:0",
-            SystemPrompt = "You are a Principal Software Architect. Review code for correctness, security, and performance.",
-            Temperature = 0.2,
+            Model = "anthropic.claude-3-5-sonnet-20240620-v1:0",
+            SystemPrompt = "You are a principal staff software engineer conducting a strict, helpful code review.",
+            Temperature = 0.3,
             MaxTokens = 3000,
-            FallbackProvider = "bedrock",
-            FallbackModel = "anthropic.claude-3-haiku-20240307-v1:0",
+            FallbackProvider = "local",
+            FallbackModel = "ollama/llama3",
             Version = 1,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
@@ -176,6 +176,7 @@ public class ApplicationRegistryService : IApplicationRegistryService
             MaxTokens = request.MaxTokens,
             FallbackProvider = request.FallbackProvider,
             FallbackModel = request.FallbackModel,
+            AllowedCidrs = request.AllowedCidrs ?? [],
             Version = 1,
             IsActive = true,
             CreatedAt = DateTimeOffset.UtcNow,
@@ -186,11 +187,17 @@ public class ApplicationRegistryService : IApplicationRegistryService
         _apps[cleanAppId] = app;
         await PersistRegistryToFileAsync();
 
+        // Mint initial ready-to-use 1-hour STS temporary token
+        var (stsToken, stsExpiresAt) = _securityService.IssueAppStsToken(cleanAppId, TimeSpan.FromHours(1), "invoke", false);
+
         return new CreateAppResponse
         {
             App = app,
             ApiKey = rawKey,
-            EndpointUrl = $"/gateway/{cleanAppId}/invoke"
+            EndpointUrl = $"/gateway/{cleanAppId}/invoke",
+            StsToken = stsToken,
+            StsExpiresAt = stsExpiresAt,
+            StsDurationSeconds = 3600
         };
     }
 
@@ -209,6 +216,7 @@ public class ApplicationRegistryService : IApplicationRegistryService
             SystemPrompt = existing.SystemPrompt,
             Temperature = existing.Temperature,
             MaxTokens = existing.MaxTokens,
+            AllowedCidrs = existing.AllowedCidrs,
             SavedAt = existing.UpdatedAt
         };
 
@@ -225,6 +233,7 @@ public class ApplicationRegistryService : IApplicationRegistryService
             MaxTokens = request.MaxTokens ?? existing.MaxTokens,
             FallbackProvider = request.FallbackProvider ?? existing.FallbackProvider,
             FallbackModel = request.FallbackModel ?? existing.FallbackModel,
+            AllowedCidrs = request.AllowedCidrs ?? existing.AllowedCidrs,
             IsActive = request.IsActive ?? existing.IsActive,
             Version = existing.Version + 1,
             UpdatedAt = DateTimeOffset.UtcNow,
@@ -246,30 +255,316 @@ public class ApplicationRegistryService : IApplicationRegistryService
         return removed;
     }
 
-    public Task<(bool isValid, AppConfig? app)> AuthenticateAppAsync(string appId, string apiKey, CancellationToken cancellationToken = default)
+    public bool ValidateAppHostIp(AppConfig app, System.Net.IPAddress? clientIp)
+    {
+        return IpNetworkHelper.IsIpInAllowedCidrs(clientIp, app.AllowedCidrs);
+    }
+
+    public Task<(bool isValid, AppConfig? app, string? failureReason)> AuthenticateAppAsync(
+        string appId, 
+        string apiKey, 
+        System.Net.IPAddress? clientIp = null, 
+        CancellationToken cancellationToken = default)
     {
         if (!_apps.TryGetValue(appId, out var app) || !app.IsActive)
         {
-            return Task.FromResult<(bool, AppConfig?)>((false, null));
+            return Task.FromResult<(bool, AppConfig?, string?)>((false, null, "APP_NOT_FOUND_OR_INACTIVE"));
+        }
+
+        // Host Network Trust: verify client source IP against allowed CIDRs
+        if (!ValidateAppHostIp(app, clientIp))
+        {
+            _logger.LogWarning("Host network access rejected for appId '{AppId}'. Client IP {ClientIp} is not in AllowedCidrs [{Cidrs}]",
+                appId, clientIp, string.Join(", ", app.AllowedCidrs));
+            return Task.FromResult<(bool, AppConfig?, string?)>((false, app, "HOST_IP_NOT_AUTHORIZED"));
         }
 
         if (!_options.Security.EnforceAppApiKey)
         {
-            return Task.FromResult<(bool, AppConfig?)>((true, app));
+            return Task.FromResult<(bool, AppConfig?, string?)>((true, app, null));
         }
 
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return Task.FromResult<(bool, AppConfig?)>((false, null));
+            return Task.FromResult<(bool, AppConfig?, string?)>((false, null, "MISSING_API_KEY"));
         }
 
-        if (_securityService.VerifyKey(apiKey, _securityService.HashKey(_options.Security.AdminApiKey)))
+        var cleanKey = apiKey.Trim();
+        if (cleanKey.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
         {
-            return Task.FromResult<(bool, AppConfig?)>((true, app));
+            cleanKey = cleanKey[7..].Trim();
         }
 
-        var isValid = _securityService.VerifyKey(apiKey, app.ApiKeyHash);
-        return Task.FromResult<(bool, AppConfig?)>((isValid, isValid ? app : null));
+        // 1. Check if an Application STS Token is presented
+        if (cleanKey.StartsWith("ug_sts_", StringComparison.OrdinalIgnoreCase))
+        {
+            var (isStsValid, payload, failureReason) = _securityService.ValidateAppStsToken(cleanKey);
+            if (!isStsValid || payload == null)
+            {
+                _logger.LogWarning("STS token rejection for appId '{AppId}': {Reason}", appId, failureReason);
+                return Task.FromResult<(bool, AppConfig?, string?)>((false, null, failureReason ?? "INVALID_STS_TOKEN"));
+            }
+
+            // Verify appId scope (Admin tokens with '*' can invoke any app; otherwise must match exact appId)
+            if (!payload.IsAdmin && !string.Equals(payload.AppId, appId, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("STS token appId mismatch. Token appId: '{TokenAppId}', Request appId: '{ReqAppId}'", payload.AppId, appId);
+                return Task.FromResult<(bool, AppConfig?, string?)>((false, null, "STS_APP_ID_MISMATCH"));
+            }
+
+            return Task.FromResult<(bool, AppConfig?, string?)>((true, app, null));
+        }
+
+        // 2. Check Master Admin Key
+        if (_securityService.VerifyKey(cleanKey, _securityService.HashKey(_options.Security.AdminApiKey)))
+        {
+            return Task.FromResult<(bool, AppConfig?, string?)>((true, app, null));
+        }
+
+        // 3. Check App Hashed Primary Long-Term API Key
+        if (_securityService.VerifyKey(cleanKey, app.ApiKeyHash))
+        {
+            return Task.FromResult<(bool, AppConfig?, string?)>((true, app, null));
+        }
+
+        // 4. Check App Secondary Key (Dual-Key Grace Period during Rotation)
+        if (!string.IsNullOrEmpty(app.SecondaryApiKeyHash))
+        {
+            var isSecondaryValid = _securityService.VerifyKey(cleanKey, app.SecondaryApiKeyHash);
+            if (isSecondaryValid)
+            {
+                if (app.SecondaryKeyExpiresAt == null || DateTimeOffset.UtcNow < app.SecondaryKeyExpiresAt.Value)
+                {
+                    _logger.LogInformation("Authenticated app '{AppId}' using active secondary grace-period key", appId);
+                    return Task.FromResult<(bool, AppConfig?, string?)>((true, app, null));
+                }
+                else
+                {
+                    _logger.LogWarning("Rejected app '{AppId}' because secondary key grace period expired at {Expiry}", appId, app.SecondaryKeyExpiresAt);
+                    return Task.FromResult<(bool, AppConfig?, string?)>((false, null, "SECONDARY_KEY_EXPIRED"));
+                }
+            }
+        }
+
+        return Task.FromResult<(bool, AppConfig?, string?)>((false, null, "INVALID_API_KEY"));
+    }
+
+    public Task<AppStsTokenResponse?> IssueStsTokenForAppAsync(
+        string? appId,
+        string apiKey,
+        int durationSeconds = 3600,
+        string scope = "invoke",
+        string? callerId = null,
+        System.Net.IPAddress? clientIp = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(apiKey))
+            return Task.FromResult<AppStsTokenResponse?>(null);
+
+        var cleanKey = apiKey.Trim();
+        if (cleanKey.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            cleanKey = cleanKey[7..].Trim();
+
+        var duration = TimeSpan.FromSeconds(durationSeconds <= 0 ? 3600 : durationSeconds);
+
+        // A. Is Master Admin Key provided?
+        if (_securityService.VerifyKey(cleanKey, _securityService.HashKey(_options.Security.AdminApiKey)))
+        {
+            var targetAppId = string.IsNullOrWhiteSpace(appId) ? "*" : appId.Trim();
+            var (adminToken, adminExpiresAt) = _securityService.IssueAppStsToken(
+                targetAppId,
+                duration,
+                scope,
+                isAdmin: true,
+                callerId: callerId);
+
+            return Task.FromResult<AppStsTokenResponse?>(new AppStsTokenResponse
+            {
+                Token = adminToken,
+                TokenType = "Bearer",
+                AppId = targetAppId,
+                DurationSeconds = (int)duration.TotalSeconds,
+                IssuedAt = DateTimeOffset.UtcNow,
+                ExpiresAt = adminExpiresAt,
+                Scope = scope,
+                IsAdmin = true
+            });
+        }
+
+        // B. Is an App Long-Term Key provided (Primary or Grace-Period Secondary)?
+        AppConfig? matchedApp = null;
+        if (!string.IsNullOrWhiteSpace(appId) && _apps.TryGetValue(appId, out var specificApp))
+        {
+            if (specificApp.IsActive)
+            {
+                if (_securityService.VerifyKey(cleanKey, specificApp.ApiKeyHash))
+                {
+                    matchedApp = specificApp;
+                }
+                else if (!string.IsNullOrEmpty(specificApp.SecondaryApiKeyHash) &&
+                         _securityService.VerifyKey(cleanKey, specificApp.SecondaryApiKeyHash) &&
+                         (specificApp.SecondaryKeyExpiresAt == null || DateTimeOffset.UtcNow < specificApp.SecondaryKeyExpiresAt.Value))
+                {
+                    matchedApp = specificApp;
+                }
+            }
+        }
+        else
+        {
+            // Search all registered apps for matching key hash
+            foreach (var app in _apps.Values)
+            {
+                if (app.IsActive)
+                {
+                    if (_securityService.VerifyKey(cleanKey, app.ApiKeyHash))
+                    {
+                        matchedApp = app;
+                        break;
+                    }
+                    if (!string.IsNullOrEmpty(app.SecondaryApiKeyHash) &&
+                        _securityService.VerifyKey(cleanKey, app.SecondaryApiKeyHash) &&
+                        (app.SecondaryKeyExpiresAt == null || DateTimeOffset.UtcNow < app.SecondaryKeyExpiresAt.Value))
+                    {
+                        matchedApp = app;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (matchedApp == null)
+        {
+            return Task.FromResult<AppStsTokenResponse?>(null);
+        }
+
+        // Host Network Trust verification before minting STS token
+        if (!ValidateAppHostIp(matchedApp, clientIp))
+        {
+            _logger.LogWarning("STS token issuance rejected for appId '{AppId}'. Host IP {ClientIp} is not in AllowedCidrs [{Cidrs}]",
+                matchedApp.AppId, clientIp, string.Join(", ", matchedApp.AllowedCidrs));
+            return Task.FromResult<AppStsTokenResponse?>(null);
+        }
+
+        var (appToken, appExpiresAt) = _securityService.IssueAppStsToken(
+            matchedApp.AppId,
+            duration,
+            scope,
+            isAdmin: false,
+            callerId: callerId);
+
+        return Task.FromResult<AppStsTokenResponse?>(new AppStsTokenResponse
+        {
+            Token = appToken,
+            TokenType = "Bearer",
+            AppId = matchedApp.AppId,
+            DurationSeconds = (int)duration.TotalSeconds,
+            IssuedAt = DateTimeOffset.UtcNow,
+            ExpiresAt = appExpiresAt,
+            Scope = scope,
+            IsAdmin = false
+        });
+    }
+
+    public Task<AppStsTokenResponse> MintStsTokenDirectAsync(
+        string appId,
+        int durationSeconds = 3600,
+        string scope = "invoke",
+        bool isAdmin = false,
+        string? callerId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var duration = TimeSpan.FromSeconds(durationSeconds <= 0 ? 3600 : durationSeconds);
+        var (token, expiresAt) = _securityService.IssueAppStsToken(
+            appId,
+            duration,
+            scope,
+            isAdmin,
+            callerId);
+
+        return Task.FromResult(new AppStsTokenResponse
+        {
+            Token = token,
+            TokenType = "Bearer",
+            AppId = appId,
+            DurationSeconds = (int)duration.TotalSeconds,
+            IssuedAt = DateTimeOffset.UtcNow,
+            ExpiresAt = expiresAt,
+            Scope = scope,
+            IsAdmin = isAdmin
+        });
+    }
+
+    public async Task<RotateKeyResponse?> RotateAppApiKeyAsync(
+        string appId,
+        int gracePeriodDays = 7,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_apps.TryGetValue(appId, out var existing))
+        {
+            return null;
+        }
+
+        var clampedGraceDays = Math.Max(1, Math.Min(30, gracePeriodDays <= 0 ? 7 : gracePeriodDays));
+        var (newRawKey, newKeyHash, newKeyPrefix) = _securityService.GenerateApiKey();
+        var now = DateTimeOffset.UtcNow;
+        var secondaryExpiry = now.AddDays(clampedGraceDays);
+
+        var updated = existing with
+        {
+            ApiKeyHash = newKeyHash,
+            ApiKeyPrefix = newKeyPrefix,
+            SecondaryApiKeyHash = existing.ApiKeyHash,
+            SecondaryApiKeyPrefix = existing.ApiKeyPrefix,
+            KeyRotatedAt = now,
+            SecondaryKeyExpiresAt = secondaryExpiry,
+            UpdatedAt = now
+        };
+
+        _apps[appId] = updated;
+        await PersistRegistryToFileAsync();
+
+        _logger.LogInformation("Rotated API key for app '{AppId}'. New prefix: {NewPrefix}, Secondary prefix: {SecPrefix}, Grace period: {Days} days",
+            appId, newKeyPrefix, existing.ApiKeyPrefix, clampedGraceDays);
+
+        return new RotateKeyResponse
+        {
+            AppId = appId,
+            NewApiKey = newRawKey,
+            NewKeyPrefix = newKeyPrefix,
+            SecondaryKeyPrefix = existing.ApiKeyPrefix,
+            SecondaryKeyExpiresAt = secondaryExpiry,
+            RotatedAt = now
+        };
+    }
+
+    public async Task<RevokeKeyResponse?> RevokeSecondaryApiKeyAsync(
+        string appId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_apps.TryGetValue(appId, out var existing))
+        {
+            return null;
+        }
+
+        var updated = existing with
+        {
+            SecondaryApiKeyHash = null,
+            SecondaryApiKeyPrefix = null,
+            SecondaryKeyExpiresAt = null,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+
+        _apps[appId] = updated;
+        await PersistRegistryToFileAsync();
+
+        _logger.LogInformation("Revoked secondary API key for app '{AppId}'", appId);
+
+        return new RevokeKeyResponse
+        {
+            AppId = appId,
+            Message = "Secondary API key successfully revoked.",
+            RevokedAt = DateTimeOffset.UtcNow
+        };
     }
 
     public Task RecordMetricAsync(RequestLogEntry log, CancellationToken cancellationToken = default)
