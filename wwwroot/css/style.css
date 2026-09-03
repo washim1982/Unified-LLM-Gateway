@@ -1,18 +1,19 @@
 :root {
-  --bg-dark: #0f141c;
-  --bg-card: #171f2c;
-  --bg-card-hover: #1e2838;
-  --bg-input: #0b0f15;
-  --border-color: #263346;
-  --border-focus: #3b82f6;
-  --text-main: #f1f5f9;
-  --text-muted: #94a3b8;
-  --primary: #3b82f6;
-  --primary-hover: #2563eb;
+  --bg-dark: #121316;
+  --bg-card: #1a1c22;
+  --bg-card-hover: #22252c;
+  --bg-input: #141519;
+  --border-color: #2c2e36;
+  --border-focus: #52525e;
+  --text-main: #f3f4f6;
+  --text-muted: #9ca3af;
+  --primary: #475569;
+  --primary-hover: #525866;
   --accent-green: #10b981;
   --accent-amber: #f59e0b;
   --accent-red: #ef4444;
   --accent-purple: #8b5cf6;
+  --accent-slate: #cbd5e1;
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 }
@@ -39,7 +40,7 @@ body {
 /* Sidebar */
 .sidebar {
   width: 270px;
-  background-color: #121824;
+  background-color: #15161a;
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
@@ -54,7 +55,7 @@ body {
 }
 
 .brand-icon {
-  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  background: linear-gradient(135deg, #475569, #334155);
   padding: 8px;
   border-radius: 8px;
   display: flex;
@@ -113,9 +114,9 @@ body {
 }
 
 .nav-btn.active {
-  background-color: rgba(59, 130, 246, 0.15);
-  color: #60a5fa;
-  border-left: 3px solid var(--primary);
+  background-color: #242730;
+  color: #f3f4f6;
+  border-left: 3px solid var(--accent-slate);
 }
 
 .sidebar-footer {
@@ -264,7 +265,7 @@ body {
 }
 
 .app-card:hover {
-  border-color: #3b82f6;
+  border-color: var(--border-focus);
   transform: translateY(-2px);
 }
 
@@ -284,8 +285,8 @@ body {
 .app-id-badge {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: #60a5fa;
-  background: rgba(59, 130, 246, 0.1);
+  color: #cbd5e1;
+  background: rgba(156, 163, 175, 0.15);
   padding: 2px 6px;
   border-radius: 4px;
   margin-top: 4px;
@@ -362,7 +363,7 @@ body {
 .guardrail-section h4 {
   font-size: 13px;
   font-weight: 600;
-  color: #60a5fa;
+  color: #e2e8f0;
   margin-bottom: 8px;
 }
 
@@ -420,8 +421,8 @@ body {
 }
 
 .violation-pill.severity-Medium {
-  border-color: #3b82f6;
-  background-color: rgba(59, 130, 246, 0.15);
+  border-color: #64748b;
+  background-color: rgba(100, 116, 139, 0.15);
 }
 
 .violation-title {
@@ -502,7 +503,7 @@ label {
 .endpoint-path {
   font-family: var(--font-mono);
   font-size: 13px;
-  color: #60a5fa;
+  color: #cbd5e1;
 }
 
 .code-tabs {
@@ -539,7 +540,7 @@ label {
   overflow-x: auto;
   font-family: var(--font-mono);
   font-size: 12px;
-  color: #38bdf8;
+  color: #e2e8f0;
   max-height: 220px;
 }
 
@@ -563,7 +564,7 @@ label {
 }
 
 .meta-item strong {
-  color: #60a5fa;
+  color: #cbd5e1;
 }
 
 .response-output-box label {
@@ -737,18 +738,18 @@ label {
    Spend & Cost Governance FinOps Dashboard Styles (spend-dashboard.html)
    ========================================================================== */
 :root {
-  --spend: #4D8BFF;
-  --tokens: #A177FF;
-  --alert: #FF5C6C;
-  --ok: #3FD68A;
-  --warn: #F5B440;
-  --surface-finops: #161C27;
-  --surface-finops-2: #1B2231;
-  --line-finops: #232C3B;
-  --line-soft: #1E2634;
-  --ink-finops: #E6EAF2;
-  --ink-2: #9AA5B8;
-  --ink-3: #6B7688;
+  --spend: #cbd5e1;
+  --tokens: #c084fc;
+  --alert: #f87171;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --surface-finops: #1a1c22;
+  --surface-finops-2: #22252c;
+  --line-finops: #2c2e36;
+  --line-soft: #23252c;
+  --ink-finops: #f3f4f6;
+  --ink-2: #9ca3af;
+  --ink-3: #6b7280;
 }
 
 .num {
@@ -915,9 +916,9 @@ label {
   height: 100%;
 }
 
-.meter-finops .s1 { background: rgba(63, 214, 138, .55); }
-.meter-finops .s2 { background: rgba(245, 180, 64, .5); }
-.meter-finops .s3 { background: rgba(255, 92, 108, .45); }
+.meter-finops .s1 { background: rgba(52, 211, 153, .55); }
+.meter-finops .s2 { background: rgba(251, 191, 36, .5); }
+.meter-finops .s3 { background: rgba(248, 113, 113, .45); }
 
 .meter-finops .pin {
   position: absolute;
@@ -1270,7 +1271,7 @@ dl.stats-finops dd .unit {
 }
 
 .table-finops tbody tr:hover {
-  background: #1A2130;
+  background: #242730;
 }
 
 .table-finops tbody td.n {
@@ -1384,7 +1385,7 @@ dl.stats-finops dd .unit {
 }
 
 .menu-finops button:hover {
-  background: #222B3B;
+  background: #2c2e36;
   color: var(--text-main);
 }
 
@@ -1426,9 +1427,9 @@ dl.stats-finops dd .unit {
 
 .pager-finops .pgs button[aria-current=true],
 .pager-finops .pgs button.active {
-  background: var(--spend);
-  border-color: var(--spend);
-  color: #08101F;
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
   font-weight: 600;
 }
 
@@ -1528,7 +1529,7 @@ dl.stats-finops dd .unit {
   bottom: 26px;
   transform: translateX(-50%);
   background: var(--surface-finops-2);
-  border: 1px solid var(--spend);
+  border: 1px solid var(--border-focus);
   color: var(--text-main);
   border-radius: 9px;
   padding: 11px 18px;
@@ -1542,6 +1543,22 @@ dl.stats-finops dd .unit {
 @keyframes fadeInToast {
   from { opacity: 0; transform: translate(-50%, 10px); }
   to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@media (max-width: 1080px) {
+  .spend-summary, .analytics-finops, .adv-finops {
+    grid-template-columns: 1fr;
+  }
+  .split-finops {
+    grid-template-rows: none;
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .hero-finops .amount { font-size: 36px; }
+  .split-finops { grid-template-columns: 1fr; }
+  .exports-finops { margin-left: 0; }
 }
 
 @media (max-width: 1080px) {

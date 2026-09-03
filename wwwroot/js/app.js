@@ -327,8 +327,8 @@ document.addEventListener('DOMContentLoaded', () => {
             syncBadge.title = 'Live foundation models list retrieved directly from AWS Bedrock API in your region.';
           } else {
             syncBadge.textContent = '⚪ Curated Catalog';
-            syncBadge.style.background = 'rgba(59, 130, 246, 0.15)';
-            syncBadge.style.color = '#60a5fa';
+            syncBadge.style.background = 'rgba(156, 163, 175, 0.15)';
+            syncBadge.style.color = '#cbd5e1';
             syncBadge.title = 'AWS Bedrock offline or unconfigured. Using built-in high-speed model catalog.';
           }
         }
@@ -452,11 +452,9 @@ document.addEventListener('DOMContentLoaded', () => {
           const expiryDate = app.secondaryKeyExpiresAt ? new Date(app.secondaryKeyExpiresAt).toLocaleDateString() : '';
           secondaryKeyHtml = `<span class="badge" style="background:rgba(245,158,11,0.2); color:#fbbf24; font-size:10px;">${escapeHtml(app.secondaryApiKeyPrefix)} (Exp: ${expiryDate})</span>`;
         }
-      }
-
-      let hostsHtml = '<span style="color:var(--text-muted); font-size:11px;">Any Host (0.0.0.0/0)</span>';
+          let hostsHtml = '<span style="color:var(--text-muted); font-size:11px;">Any Host (0.0.0.0/0)</span>';
       if (app.allowedCidrs && app.allowedCidrs.length > 0) {
-        hostsHtml = `<span class="badge" style="background:rgba(59,130,246,0.15); color:#60a5fa; font-size:10px;" title="${escapeHtml(app.allowedCidrs.join(', '))}">${escapeHtml(app.allowedCidrs.slice(0, 2).join(', '))}${app.allowedCidrs.length > 2 ? ' +' + (app.allowedCidrs.length - 2) : ''}</span>`;
+        hostsHtml = `<span class="badge" style="background:rgba(156,163,175,0.15); color:#cbd5e1; font-size:10px;" title="${escapeHtml(app.allowedCidrs.join(', '))}\">${escapeHtml(app.allowedCidrs.slice(0, 2).join(', '))}${app.allowedCidrs.length > 2 ? ' +' + (app.allowedCidrs.length - 2) : ''}</span>`;
       }
 
       const card = document.createElement('div');
@@ -481,7 +479,7 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
           <div class="app-meta-row">
             <span>Token Pricing ($/1M):</span>
-            <span style="font-family: var(--font-mono); font-size: 11px; color:#60a5fa;">In: $${(app.inputCostPerMillion !== undefined ? app.inputCostPerMillion : 3.00).toFixed(2)} • Out: $${(app.outputCostPerMillion !== undefined ? app.outputCostPerMillion : 15.00).toFixed(2)}</span>
+            <span style="font-family: var(--font-mono); font-size: 11px; color:#cbd5e1;">In: $${(app.inputCostPerMillion !== undefined ? app.inputCostPerMillion : 3.00).toFixed(2)} • Out: $${(app.outputCostPerMillion !== undefined ? app.outputCostPerMillion : 15.00).toFixed(2)}</span>
           </div>
           <div class="app-meta-row">
             <span>Primary Key:</span>
@@ -499,7 +497,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="app-card-actions" style="display:flex; gap:6px; flex-wrap:wrap;">
           <button class="btn btn-primary btn-sm" onclick="selectAppForTest('${app.appId}')">Test API</button>
           <button class="btn btn-outline btn-sm" onclick="openEditModalForApp('${app.appId}')" style="border-color: rgba(52,211,153,0.5); color:#34d399;">💵 Edit Pricing</button>
-          <button class="btn btn-outline btn-sm" onclick="openStsModalForApp('${app.appId}')" style="border-color: rgba(59,130,246,0.5); color:#60a5fa;">⚡ Mint STS</button>
+          <button class="btn btn-outline btn-sm" onclick="openStsModalForApp('${app.appId}')" style="border-color: rgba(156,163,175,0.4); color:#cbd5e1;">⚡ Mint STS</button>
           <button class="btn btn-outline btn-sm" onclick="openRotateModalForApp('${app.appId}')" style="border-color: rgba(139,92,246,0.5); color:#a78bfa;">🔄 Rotate Key</button>
           <button class="btn btn-danger btn-sm" onclick="deleteApp('${app.appId}')">Delete</button>
         </div>
@@ -1409,7 +1407,7 @@ Write-Output $response.output`;
   const pctStr = v => ((v || 0) * 100).toFixed(1) + '%';
 
   // Sparkline SVG generator
-  function sparkSvg(vals, color = '#4D8BFF', w = 132, h = 34) {
+  function sparkSvg(vals, color = '#cbd5e1', w = 132, h = 34) {
     if (!vals || vals.length < 2) {
       vals = [0.1, 0.2, 0.15, 0.3, 0.25, 0.4, 0.35];
     }
@@ -1550,7 +1548,7 @@ Write-Output $response.output`;
       if (topAppNameEl) topAppNameEl.textContent = topApp.name;
       if (topAppCostEl) topAppCostEl.textContent = money(topApp.cost);
       if (topAppShareEl) topAppShareEl.textContent = `${pctStr(topApp.share)} of spend · ${topApp.model}`;
-      if (topAppSparkEl) topAppSparkEl.innerHTML = sparkSvg(topApp.series, '#4D8BFF', 260, 46);
+      if (topAppSparkEl) topAppSparkEl.innerHTML = sparkSvg(topApp.series, '#cbd5e1', 260, 46);
     } else {
       if (topAppNameEl) topAppNameEl.textContent = 'None';
       if (topAppCostEl) topAppCostEl.textContent = '$0.00';
@@ -1605,7 +1603,7 @@ Write-Output $response.output`;
       const bh = Math.max(3, (v / mx) * (h - 38));
       const x = i * (bw + gap);
       const y = h - 24 - bh;
-      const c = v === mx ? '#4D8BFF' : 'rgba(77, 139, 255, 0.42)';
+      const c = v === mx ? '#cbd5e1' : 'rgba(203, 213, 225, 0.35)';
       return `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="3" fill="${c}">
         <title>${labels[i]}: ${money(v)}</title>
       </rect>
@@ -1699,7 +1697,7 @@ Write-Output $response.output`;
   function getShareBarColor(share) {
     if (share > 0.30) return '#FF5C6C'; // Red
     if (share > 0.12) return '#F5B440'; // Amber
-    return '#4D8BFF'; // Blue
+    return '#cbd5e1'; // Platinum Slate
   }
 
   function paintTable() {
@@ -1743,7 +1741,7 @@ Write-Output $response.output`;
             </div>
           </td>
           <td class="n" style="width:140px;">
-            ${sparkSvg(a.series, a.host === 'bedrock' ? '#4D8BFF' : '#A177FF', 120, 28)}
+            ${sparkSvg(a.series, a.host === 'bedrock' ? '#cbd5e1' : '#c084fc', 120, 28)}
           </td>
           <td style="position:relative;">
             <button class="menu-btn-finops" data-app-menu="${escapeHtml(a.appId)}" aria-label="Actions for ${escapeHtml(a.name)}">⋯</button>
@@ -1758,63 +1756,73 @@ Write-Output $response.output`;
     const pagerInfoEl = document.getElementById('spend-pager-info');
     if (pagerInfoEl) {
       pagerInfoEl.textContent = rows.length
-        ? `Showing ${(tableState.page - 1) * tableState.pageSize + 1}–${Math.min(tableState.page * tableState.pageSize, rows.length)} of ${rows.length}`
-        : 'Nothing to show';
+        ? `Showing ${(tableState.page - 1) * tableState.pageSize + 1}–${Math.min(rows.length, tableState.page * tableState.pageSize)} of ${rows.length}`
+        : '0 items';
     }
 
-    const pgsEl = document.getElementById('spend-pager-buttons');
-    if (pgsEl) {
-      pgsEl.innerHTML = `<button ${tableState.page === 1 ? 'disabled' : ''} data-page="${tableState.page - 1}">Prev</button>` +
-        Array.from({ length: pages }, (_, idx) => `<button class="${idx + 1 === tableState.page ? 'active' : ''}" data-page="${idx + 1}">${idx + 1}</button>`).join('') +
-        `<button ${tableState.page === pages ? 'disabled' : ''} data-page="${tableState.page + 1}">Next</button>`;
-
-      pgsEl.querySelectorAll('button[data-page]').forEach(btn => {
-        btn.onclick = () => {
-          tableState.page = parseInt(btn.dataset.page);
+    const pagerBtnsEl = document.getElementById('spend-pager-btns');
+    if (pagerBtnsEl) {
+      let bHtml = '';
+      for (let p = 1; p <= pages; p++) {
+        bHtml += `<button class="${p === tableState.page ? 'active' : ''}" aria-current="${p === tableState.page}" data-page="${p}">${p}</button>`;
+      }
+      pagerBtnsEl.innerHTML = bHtml;
+      pagerBtnsEl.querySelectorAll('button').forEach(btn => {
+        btn.addEventListener('click', () => {
+          tableState.page = parseInt(btn.getAttribute('data-page'));
           paintTable();
-        };
+        });
       });
     }
 
-    // Attach row menu clicks
-    tb.querySelectorAll('[data-app-menu]').forEach(btn => {
-      btn.onclick = (e) => {
-        const appId = btn.dataset.appMenu;
-        const app = billingAppsList.find(a => a.appId === appId);
-        if (app) openFinopsMenu(e, app);
-      };
+    // Attach row menu handlers
+    document.querySelectorAll('[data-app-menu]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const appId = btn.getAttribute('data-app-menu');
+        openRowMenu(appId, btn);
+      });
     });
   }
 
-  function openFinopsMenu(e, app) {
+  function openRowMenu(appId, triggerEl) {
     document.getElementById('finopsRowMenu')?.remove();
-    const menu = document.createElement('div');
-    menu.className = 'menu-finops';
-    menu.id = 'finopsRowMenu';
-    menu.innerHTML = `
-      <button data-action="edit">💵 Edit rate cards</button>
-      <button data-action="test">⚡ Test API Sandbox</button>
-      <button data-action="sts">🔑 Mint STS Token</button>
-      <button data-action="rotate">🔄 Rotate Key</button>
+    const app = billingAppsList.find(a => a.appId === appId);
+    if (!app) return;
+
+    const m = document.createElement('div');
+    m.id = 'finopsRowMenu';
+    m.className = 'menu-finops';
+    m.innerHTML = `
+      <button data-act="test">⚡ Test Application</button>
+      <button data-act="edit">💵 Edit Pricing Rate Card</button>
+      <button data-act="sts">🔑 Mint Short STS Secret</button>
       <hr>
-      <button class="danger" data-action="delete">🗑 Delete App</button>
+      <button data-act="filter">🔍 Isolate in Dashboard</button>
+      <button data-act="copy">📋 Copy App Summary</button>
     `;
-    document.body.appendChild(menu);
 
-    const r = e.currentTarget.getBoundingClientRect();
-    menu.style.top = (r.bottom + window.scrollY + 4) + 'px';
-    menu.style.left = (r.right + window.scrollX - menu.offsetWidth) + 'px';
+    document.body.appendChild(m);
+    const r = triggerEl.getBoundingClientRect();
+    m.style.position = 'fixed';
+    m.style.top = `${r.bottom + 4}px`;
+    m.style.left = `${Math.max(10, r.right - 180)}px`;
 
-    menu.querySelectorAll('button').forEach(btn => {
-      btn.onclick = () => {
-        const act = btn.dataset.action;
-        menu.remove();
-        if (act === 'edit') openEditModalForApp(app.appId);
-        else if (act === 'test') selectAppForTest(app.appId);
-        else if (act === 'sts') openStsModalForApp(app.appId);
-        else if (act === 'rotate') openRotateModalForApp(app.appId);
-        else if (act === 'delete') deleteApp(app.appId);
-      };
+    m.querySelectorAll('button').forEach(b => {
+      b.addEventListener('click', () => {
+        const act = b.dataset.act;
+        m.remove();
+        if (act === 'test') selectAppForTest(appId);
+        else if (act === 'edit') openEditModalForApp(appId);
+        else if (act === 'sts') openStsModalForApp(appId);
+        else if (act === 'filter') {
+          const s = document.getElementById('spend-search');
+          if (s) { s.value = app.name; tableState.q = app.name; paintTable(); }
+        } else if (act === 'copy') {
+          const txt = `${app.name} (${app.model}): ${fullNum(app.totTok)} tokens, ${money(app.cost)} (${pctStr(app.share)} of org spend)`;
+          navigator.clipboard.writeText(txt).then(() => showToast(`Copied summary for ${app.name}`));
+        }
+      });
     });
   }
 
@@ -1839,9 +1847,9 @@ Write-Output $response.output`;
         topApp && topApp.cost > 0 ? `Consumes ${pctStr(topApp.share)} of total organization LLM spend across ${topApp.requests} invocations.` : 'No significant single-application spend concentration detected.'],
       ['#F5B440', generativeApp ? `High generative ratio — ${generativeApp.name}` : 'Token drift nominal',
         generativeApp ? `Output/input multiplier is ${generativeApp.eff.toFixed(2)}× on ${generativeApp.model}. Output generation rates dominate this workload.` : 'Average output/input ratio remains balanced across registered conversational models.'],
-      ['#A177FF', retrievalApp ? `Retrieval / Embedding — ${retrievalApp.name}` : 'Zero-output workloads accounted',
+      ['#c084fc', retrievalApp ? `Retrieval / Embedding — ${retrievalApp.name}` : 'Zero-output workloads accounted',
         retrievalApp ? `${compactNum(retrievalApp.inTok)} input tokens processed with zero output generation. Ideal candidate for volume rate card tiering.` : 'Embeddings and retrieval workloads are operating within expected token parameters.'],
-      ['#4D8BFF', 'Budget forecast — 30-day projection',
+      ['#cbd5e1', 'Budget forecast — 30-day projection',
         `On current invocation velocity, 30-day projected run-rate is approx. $${projectedMonthly}, well within safe operating thresholds.`]
     ];
 

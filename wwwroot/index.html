@@ -424,7 +424,7 @@
           </div>
           <div class="kpi-card">
             <span class="kpi-label">Guardrail Redacted</span>
-            <span class="kpi-value" id="kpi-gr-redacted" style="color:#60a5fa;">0</span>
+            <span class="kpi-value" id="kpi-gr-redacted" style="color:#cbd5e1;">0</span>
           </div>
           <div class="kpi-card">
             <span class="kpi-label">Guardrail Blocked</span>
@@ -717,7 +717,7 @@
             <div class="form-group">
               <label style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Select from Catalog</span>
-                <span id="modal-model-sync-badge" class="badge" style="font-size:10px; background:rgba(59,130,246,0.15); color:#60a5fa;">Catalog</span>
+                <span id="modal-model-sync-badge" class="badge" style="font-size:10px; background:rgba(255,255,255,0.06); color:#cbd5e1; border:1px solid var(--border-color);">Catalog</span>
               </label>
               <select id="modal-app-model" class="form-control"></select>
             </div>
@@ -732,11 +732,11 @@
           </div>
 
           <!-- Token Pricing Configuration ($ / 1M Tokens) -->
-          <div class="form-row" style="background:rgba(59,130,246,0.05); padding:10px 12px; border:1px solid rgba(59,130,246,0.2); border-radius:8px; margin-bottom:12px;">
+          <div class="form-row" style="background:rgba(255,255,255,0.02); padding:10px 12px; border:1px solid var(--border-color); border-radius:8px; margin-bottom:12px;">
             <div class="form-group" style="margin-bottom:0;">
               <label style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Input Token Cost ($ / 1M)</span>
-                <span class="badge" style="font-size:10px; background:rgba(59,130,246,0.2); color:#60a5fa;">Prompt Rate</span>
+                <span class="badge" style="font-size:10px; background:rgba(255,255,255,0.06); color:#cbd5e1; border:1px solid var(--border-color);">Prompt Rate</span>
               </label>
               <input type="number" id="modal-app-input-cost" class="form-control" value="3.00" step="0.0001" min="0" placeholder="e.g. 3.00">
               <small style="color:var(--text-muted); font-size:11px;">Cost charged per 1,000,000 prompt tokens.</small>
@@ -826,7 +826,7 @@
           <small style="color:var(--text-muted); font-size:11px;">Store securely in your server environment or Key Vault. Use to exchange for STS tokens.</small>
         </div>
 
-        <div class="form-group" style="margin-top:12px; padding:12px; background:rgba(59,130,246,0.08); border:1px solid rgba(59,130,246,0.3); border-radius:8px;">
+        <div class="form-group" style="margin-top:12px; padding:12px; background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:8px;">
           <label style="display:flex; justify-content:space-between; align-items:center;">
             <span>2. Short Temporary Secret (STS Token - 1 Hour)</span>
             <span class="badge" style="background:rgba(16,185,129,0.2); color:#34d399;">Ready To Use</span>
@@ -951,11 +951,11 @@
     </div>
   </div>
 
-  <!-- Edit Application Pricing & Configuration Modal -->
+  <!-- Edit Application Modal -->
   <div class="modal-backdrop" id="edit-modal">
-    <div class="modal">
+    <div class="modal modal-lg">
       <div class="modal-header">
-        <h3>Edit Application Pricing & Settings</h3>
+        <h3>Edit Application Pricing & Configuration</h3>
         <button class="close-btn" id="btn-close-edit-modal">&times;</button>
       </div>
       <form id="edit-app-form">
@@ -973,11 +973,11 @@
           </div>
 
           <!-- Token Pricing Configuration ($ / 1M Tokens) -->
-          <div class="form-row" style="background:rgba(59,130,246,0.05); padding:10px 12px; border:1px solid rgba(59,130,246,0.2); border-radius:8px; margin-bottom:12px;">
+          <div class="form-row" style="background:rgba(255,255,255,0.02); padding:10px 12px; border:1px solid var(--border-color); border-radius:8px; margin-bottom:12px;">
             <div class="form-group" style="margin-bottom:0;">
               <label style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Input Token Cost ($ / 1M)</span>
-                <span class="badge" style="font-size:10px; background:rgba(59,130,246,0.2); color:#60a5fa;">Prompt Rate</span>
+                <span class="badge" style="font-size:10px; background:rgba(255,255,255,0.06); color:#cbd5e1; border:1px solid var(--border-color);">Prompt Rate</span>
               </label>
               <input type="number" id="edit-app-input-cost" class="form-control" step="0.0001" min="0" required>
               <small style="color:var(--text-muted); font-size:11px;">Cost charged per 1,000,000 prompt tokens.</small>
