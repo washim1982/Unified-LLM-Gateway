@@ -452,9 +452,12 @@ document.addEventListener('DOMContentLoaded', () => {
           const expiryDate = app.secondaryKeyExpiresAt ? new Date(app.secondaryKeyExpiresAt).toLocaleDateString() : '';
           secondaryKeyHtml = `<span class="badge" style="background:rgba(245,158,11,0.2); color:#fbbf24; font-size:10px;">${escapeHtml(app.secondaryApiKeyPrefix)} (Exp: ${expiryDate})</span>`;
         }
-          let hostsHtml = '<span style="color:var(--text-muted); font-size:11px;">Any Host (0.0.0.0/0)</span>';
+      }
+
+      let hostsHtml = '<span style="color:var(--text-muted); font-size:11px;">Any Host (0.0.0.0/0)</span>';
       if (app.allowedCidrs && app.allowedCidrs.length > 0) {
-        hostsHtml = `<span class="badge" style="background:rgba(156,163,175,0.15); color:#cbd5e1; font-size:10px;" title="${escapeHtml(app.allowedCidrs.join(', '))}\">${escapeHtml(app.allowedCidrs.slice(0, 2).join(', '))}${app.allowedCidrs.length > 2 ? ' +' + (app.allowedCidrs.length - 2) : ''}</span>`;
+        hostsHtml = `<span class="badge" style="background:rgba(156,163,175,0.15); color:#cbd5e1; font-size:10px;" title="${escapeHtml(app.allowedCidrs.join(', '))}">` +
+          `${escapeHtml(app.allowedCidrs.slice(0, 2).join(', '))}${app.allowedCidrs.length > 2 ? ' +' + (app.allowedCidrs.length - 2) : ''}</span>`;
       }
 
       const card = document.createElement('div');
@@ -1777,7 +1780,7 @@ Write-Output $response.output`;
         : '0 items';
     }
 
-    const pagerBtnsEl = document.getElementById('spend-pager-btns');
+    const pagerBtnsEl = document.getElementById('spend-pager-buttons');
     if (pagerBtnsEl) {
       let bHtml = '';
       for (let p = 1; p <= pages; p++) {
@@ -1833,7 +1836,7 @@ Write-Output $response.output`;
         else if (act === 'edit') openEditModalForApp(appId);
         else if (act === 'sts') openStsModalForApp(appId);
         else if (act === 'filter') {
-          const s = document.getElementById('spend-search');
+          const s = document.getElementById('spend-search-input');
           if (s) { s.value = app.name; tableState.q = app.name; paintTable(); }
         } else if (act === 'copy') {
           const txt = `${app.name} (${app.model}): ${fullNum(app.totTok)} tokens, ${money(app.cost)} (${pctStr(app.share)} of org spend)`;
