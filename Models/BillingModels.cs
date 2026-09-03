@@ -3,6 +3,30 @@ using System.Text.Json.Serialization;
 namespace UnifiedGateway.Models;
 
 /// <summary>
+/// A time-series data point capturing spend and token metrics for a specific time bucket.
+/// </summary>
+public class TimeSeriesPoint
+{
+    [JsonPropertyName("label")]
+    public string Label { get; set; } = string.Empty;
+
+    [JsonPropertyName("date")]
+    public string Date { get; set; } = string.Empty;
+
+    [JsonPropertyName("spendUsd")]
+    public decimal SpendUsd { get; set; }
+
+    [JsonPropertyName("inputTokens")]
+    public long InputTokens { get; set; }
+
+    [JsonPropertyName("outputTokens")]
+    public long OutputTokens { get; set; }
+
+    [JsonPropertyName("requests")]
+    public long Requests { get; set; }
+}
+
+/// <summary>
 /// Detailed financial and token consumption metrics for a single registered application.
 /// </summary>
 public class AppBillingSummary
@@ -99,6 +123,15 @@ public class OrganizationBillingReport
 
     [JsonPropertyName("appBills")]
     public List<AppBillingSummary> AppBills { get; set; } = [];
+
+    [JsonPropertyName("dailySpendTrend")]
+    public List<TimeSeriesPoint> DailySpendTrend { get; set; } = [];
+
+    [JsonPropertyName("weeklySpendTrend")]
+    public List<TimeSeriesPoint> WeeklySpendTrend { get; set; } = [];
+
+    [JsonPropertyName("monthlySpendTrend")]
+    public List<TimeSeriesPoint> MonthlySpendTrend { get; set; } = [];
 
     [JsonPropertyName("generatedAt")]
     public DateTimeOffset GeneratedAt { get; set; } = DateTimeOffset.UtcNow;

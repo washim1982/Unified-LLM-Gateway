@@ -153,6 +153,83 @@ public class BillingTests
     }
 
     [Fact]
+    public async Task GetBillingSummaryAsync_ReturnsZeroTrend_WhenNoInvocations()
+    {
+        var registry = new ApplicationRegistryService(_mockSecurity.Object, _options, NullLogger<ApplicationRegistryService>.Instance);
+
+        await registry.CreateAppAsync(new CreateAppRequest
+        {
+            AppId = "zero-trend-app",
+            Name = "Zero Trend App",
+            Provider = "bedrock",
+            Model = "anthropic.claude-3-5-sonnet-20241022-v2:0",
+            InputCostPerMillion = 3.00,
+            OutputCostPerMillion = 15.00
+        });
+
+        var summary = await registry.GetBillingSummaryAsync();
+        Assert.NotNull(summary);
+        Assert.Equal(0m, summary.TotalSpendUsd);
+        Assert.Equal(7, summary.DailySpendTrend.Count);
+        Assert.All(summary.DailySpendTrend, d => Assert.Equal(0m, d.SpendUsd));
+        Assert.Equal(5, summary.WeeklySpendTrend.Count);
+        Assert.All(summary.WeeklySpendTrend, w => Assert.Equal(0m, w.SpendUsd));
+        Assert.Equal(5, summary.MonthlySpendTrend.Count);
+        Assert.All(summary.MonthlySpendTrend, m => Assert.Equal(0m, m.SpendUsd));
+
+        var bill = summary.AppBills.FirstOrDefault(b => b.AppId == "zero-trend-app");
+        Assert.NotNull(bill);
+        Assert.Equal(7, bill.DailySpendTrend.Count);
+        Assert.All(bill.DailySpendTrend, v => Assert.Equal(0m, v));
+    }
+
+    [Fact]
+    public async Task GetBillingSummaryAsync_CalculatesAccurateTimeSeriesTrend_WithRealData()
+    {
+        var registry = new ApplicationRegistryService(_mockSecurity.Object, _options, NullLogger<ApplicationRegistryService>.Instance);
+
+        await registry.CreateAppAsync(new CreateAppRequest
+        {
+            AppId = "trend-data-app",
+            Name = "Trend Data App",
+            Provider = "bedrock",
+            Model = "anthropic.claude-3-5-sonnet-20241022-v2:0",
+            InputCostPerMillion = 2.00,
+            OutputCostPerMillion = 10.00
+        });
+
+        // Record a real log for today
+        await registry.RecordMetricAsync(new RequestLogEntry
+        {
+            AppId = "trend-data-app",
+            Provider = "bedrock",
+            Model = "anthropic.claude-3-5-sonnet-20241022-v2:0",
+            InputTokens = 1000000, // 1M in = $2.00
+            OutputTokens = 500000,  // 0.5M out = $5.00 -> total $7.00
+            Success = true,
+            LatencyMs = 300,
+            Timestamp = DateTimeOffset.UtcNow
+        });
+
+        var summary = await registry.GetBillingSummaryAsync();
+        Assert.NotNull(summary);
+        Assert.Equal(7.0000m, summary.TotalSpendUsd);
+
+        // Today's bucket should be exactly $7.00
+        var todayBucket = summary.DailySpendTrend.Last();
+        Assert.Equal(7.0000m, todayBucket.SpendUsd);
+        Assert.Equal(1000000, todayBucket.InputTokens);
+        Assert.Equal(500000, todayBucket.OutputTokens);
+        Assert.Equal(1, todayBucket.Requests);
+
+        // Past 6 days should be exactly $0
+        for (int i = 0; i < 6; i++)
+        {
+            Assert.Equal(0m, summary.DailySpendTrend[i].SpendUsd);
+        }
+    }
+
+    [Fact]
     public async Task ExportBillingCsvAsync_GeneratesValidCsvContent()
     {
         var registry = new ApplicationRegistryService(_mockSecurity.Object, _options, NullLogger<ApplicationRegistryService>.Instance);

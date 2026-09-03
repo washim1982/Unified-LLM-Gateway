@@ -644,6 +644,8 @@ public class ApplicationRegistryService : IApplicationRegistryService
         var logs = _recentLogs.ToArray();
         var apps = _apps.Values.ToList();
         var appBills = new List<AppBillingSummary>();
+        var nowUtc = DateTimeOffset.UtcNow;
+        var todayUtc = nowUtc.Date;
 
         long orgInputTokens = 0;
         long orgOutputTokens = 0;
@@ -665,6 +667,18 @@ public class ApplicationRegistryService : IApplicationRegistryService
 
             var lastLog = appLogs.OrderByDescending(l => l.Timestamp).FirstOrDefault();
 
+            // Real 7-day spend trend for this specific app
+            var appDailySpend = new List<decimal>();
+            for (var i = 6; i >= 0; i--)
+            {
+                var d = todayUtc.AddDays(-i);
+                var dayLogs = appLogs.Where(l => l.Timestamp.UtcDateTime.Date == d).ToArray();
+                var dayIn = dayLogs.Sum(l => (long)l.InputTokens);
+                var dayOut = dayLogs.Sum(l => (long)l.OutputTokens);
+                var dayCost = Math.Round((decimal)((dayIn / 1_000_000.0) * app.InputCostPerMillion + (dayOut / 1_000_000.0) * app.OutputCostPerMillion), 6);
+                appDailySpend.Add(dayCost);
+            }
+
             orgInputTokens += inTokens;
             orgOutputTokens += outTokens;
             orgRequests += reqCount;
@@ -685,6 +699,7 @@ public class ApplicationRegistryService : IApplicationRegistryService
                 OutputCostPerMillion = app.OutputCostPerMillion,
                 InputCostUsd = inCost,
                 OutputCostUsd = outCost,
+                DailySpendTrend = appDailySpend,
                 LastInvokedAt = lastLog?.Timestamp,
                 IsActive = app.IsActive
             });
@@ -696,6 +711,106 @@ public class ApplicationRegistryService : IApplicationRegistryService
             bill.CostSharePercentage = orgTotalSpend > 0m
                 ? Math.Round((double)(bill.TotalCostUsd / orgTotalSpend) * 100.0, 2)
                 : 0.0;
+        }
+
+        // 1. Real Organization Daily Trend (Last 7 Days)
+        var dailyTrend = new List<TimeSeriesPoint>();
+        for (var i = 6; i >= 0; i--)
+        {
+            var d = todayUtc.AddDays(-i);
+            var dayLogs = logs.Where(l => l.Timestamp.UtcDateTime.Date == d).ToArray();
+            decimal daySpend = 0m;
+            long dayInTok = 0;
+            long dayOutTok = 0;
+
+            foreach (var l in dayLogs)
+            {
+                dayInTok += l.InputTokens;
+                dayOutTok += l.OutputTokens;
+                var appConfig = apps.FirstOrDefault(a => string.Equals(a.AppId, l.AppId, StringComparison.OrdinalIgnoreCase));
+                var inR = appConfig?.InputCostPerMillion ?? 3.00;
+                var outR = appConfig?.OutputCostPerMillion ?? 15.00;
+                var cost = Math.Round((decimal)((l.InputTokens / 1_000_000.0) * inR + (l.OutputTokens / 1_000_000.0) * outR), 6);
+                daySpend += cost;
+            }
+
+            dailyTrend.Add(new TimeSeriesPoint
+            {
+                Label = d.ToString("ddd"),
+                Date = d.ToString("yyyy-MM-dd"),
+                SpendUsd = Math.Round(daySpend, 4),
+                InputTokens = dayInTok,
+                OutputTokens = dayOutTok,
+                Requests = dayLogs.Length
+            });
+        }
+
+        // 2. Real Organization Weekly Trend (Last 5 Weeks)
+        var weeklyTrend = new List<TimeSeriesPoint>();
+        for (var i = 4; i >= 0; i--)
+        {
+            var start = todayUtc.AddDays(-(i * 7 + 6));
+            var end = todayUtc.AddDays(-(i * 7));
+            var weekLogs = logs.Where(l => l.Timestamp.UtcDateTime.Date >= start && l.Timestamp.UtcDateTime.Date <= end).ToArray();
+            decimal weekSpend = 0m;
+            long weekInTok = 0;
+            long weekOutTok = 0;
+
+            foreach (var l in weekLogs)
+            {
+                weekInTok += l.InputTokens;
+                weekOutTok += l.OutputTokens;
+                var appConfig = apps.FirstOrDefault(a => string.Equals(a.AppId, l.AppId, StringComparison.OrdinalIgnoreCase));
+                var inR = appConfig?.InputCostPerMillion ?? 3.00;
+                var outR = appConfig?.OutputCostPerMillion ?? 15.00;
+                var cost = Math.Round((decimal)((l.InputTokens / 1_000_000.0) * inR + (l.OutputTokens / 1_000_000.0) * outR), 6);
+                weekSpend += cost;
+            }
+
+            var weekNum = System.Globalization.ISOWeek.GetWeekOfYear(end);
+            weeklyTrend.Add(new TimeSeriesPoint
+            {
+                Label = $"W{weekNum}",
+                Date = $"{start:MM/dd}-{end:MM/dd}",
+                SpendUsd = Math.Round(weekSpend, 4),
+                InputTokens = weekInTok,
+                OutputTokens = weekOutTok,
+                Requests = weekLogs.Length
+            });
+        }
+
+        // 3. Real Organization Monthly Trend (Last 5 Months)
+        var monthlyTrend = new List<TimeSeriesPoint>();
+        for (var i = 4; i >= 0; i--)
+        {
+            var targetMonthDate = todayUtc.AddMonths(-i);
+            var y = targetMonthDate.Year;
+            var m = targetMonthDate.Month;
+            var monthLogs = logs.Where(l => l.Timestamp.UtcDateTime.Year == y && l.Timestamp.UtcDateTime.Month == m).ToArray();
+            decimal monthSpend = 0m;
+            long monthInTok = 0;
+            long monthOutTok = 0;
+
+            foreach (var l in monthLogs)
+            {
+                monthInTok += l.InputTokens;
+                monthOutTok += l.OutputTokens;
+                var appConfig = apps.FirstOrDefault(a => string.Equals(a.AppId, l.AppId, StringComparison.OrdinalIgnoreCase));
+                var inR = appConfig?.InputCostPerMillion ?? 3.00;
+                var outR = appConfig?.OutputCostPerMillion ?? 15.00;
+                var cost = Math.Round((decimal)((l.InputTokens / 1_000_000.0) * inR + (l.OutputTokens / 1_000_000.0) * outR), 6);
+                monthSpend += cost;
+            }
+
+            monthlyTrend.Add(new TimeSeriesPoint
+            {
+                Label = targetMonthDate.ToString("MMM"),
+                Date = $"{y}-{m:D2}",
+                SpendUsd = Math.Round(monthSpend, 4),
+                InputTokens = monthInTok,
+                OutputTokens = monthOutTok,
+                Requests = monthLogs.Length
+            });
         }
 
         var topApp = appBills.OrderByDescending(b => b.TotalCostUsd).FirstOrDefault();
@@ -713,6 +828,9 @@ public class ApplicationRegistryService : IApplicationRegistryService
             HighestSpendingAppName = topApp?.Name ?? "None",
             HighestSpendingAppAmountUsd = topApp?.TotalCostUsd ?? 0m,
             AppBills = appBills.OrderByDescending(b => b.TotalCostUsd).ThenBy(b => b.Name).ToList(),
+            DailySpendTrend = dailyTrend,
+            WeeklySpendTrend = weeklyTrend,
+            MonthlySpendTrend = monthlyTrend,
             GeneratedAt = DateTimeOffset.UtcNow
         };
 

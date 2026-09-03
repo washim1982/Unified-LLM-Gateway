@@ -1407,14 +1407,24 @@ Write-Output $response.output`;
   const pctStr = v => ((v || 0) * 100).toFixed(1) + '%';
 
   // Sparkline SVG generator
+  // Sparkline SVG generator
   function sparkSvg(vals, color = '#cbd5e1', w = 132, h = 34) {
     if (!vals || vals.length < 2) {
-      vals = [0.1, 0.2, 0.15, 0.3, 0.25, 0.4, 0.35];
+      vals = [0, 0, 0, 0, 0, 0, 0];
     }
     const mx = Math.max(...vals);
     const mn = Math.min(...vals);
+    const isAllZero = mx === 0 && mn === 0;
+
+    if (isAllZero) {
+      return `<svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+        <line x1="0" y1="${h - 6}" x2="${w}" y2="${h - 6}" stroke="${color}" stroke-width="1.2" stroke-dasharray="2 3" opacity=".3"/>
+        <circle cx="${w - 3}" cy="${h - 6}" r="2" fill="${color}" opacity=".4"/>
+      </svg>`;
+    }
+
     const sp = (mx - mn) || 1;
-    const pts = vals.map((v, i) => [i * (w / (vals.length - 1)), h - 2 - ((v - mn) / sp) * (h - 6)]);
+    const pts = vals.map((v, i) => [i * (w / (vals.length - 1)), h - 4 - ((v - mn) / sp) * (h - 8)]);
     const d = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
     const area = d + ` L${w} ${h} L0 ${h} Z`;
     return `<svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
@@ -1444,7 +1454,7 @@ Write-Output $response.output`;
       if (!res.ok) return;
       billingReportData = await res.json();
 
-      // Process apps list
+      // Process apps list with genuine telemetry values
       const totalSpend = Number(billingReportData.totalSpendUsd) || 0;
       billingAppsList = (billingReportData.appBills || []).map(b => {
         const cost = Number(b.totalCostUsd) || 0;
@@ -1453,14 +1463,9 @@ Write-Output $response.output`;
         const eff = inTok > 0 ? (outTok / inTok) : 0;
         const host = (b.provider || '').toLowerCase() === 'bedrock' ? 'bedrock' : 'local';
         
-        let series = b.dailySpendTrend && b.dailySpendTrend.length === 7 ? b.dailySpendTrend.map(Number) : null;
-        if (!series || series.every(v => v === 0)) {
-          if (cost > 0) {
-            series = [0.4, 0.6, 0.8, 0.5, 0.9, 1.2, 1.4].map(f => (cost * f) / 5.8);
-          } else {
-            series = [0, 0, 0, 0, 0, 0, 0];
-          }
-        }
+        const series = (b.dailySpendTrend && b.dailySpendTrend.length === 7) 
+          ? b.dailySpendTrend.map(Number) 
+          : [0, 0, 0, 0, 0, 0, 0];
 
         return {
           appId: b.appId,
@@ -1477,7 +1482,7 @@ Write-Output $response.output`;
           outCost: Number(b.outputCostUsd) || 0,
           cost: cost,
           eff: eff,
-          requests: b.totalRequests || (inTok + outTok > 0 ? Math.max(1, Math.round((inTok + outTok) / 2000)) : 0),
+          requests: b.totalRequests || 0,
           share: totalSpend > 0 ? cost / totalSpend : 0,
           series: series,
           isActive: b.isActive !== false
@@ -1553,7 +1558,7 @@ Write-Output $response.output`;
       if (topAppNameEl) topAppNameEl.textContent = 'None';
       if (topAppCostEl) topAppCostEl.textContent = '$0.00';
       if (topAppShareEl) topAppShareEl.textContent = '0% of spend';
-      if (topAppSparkEl) topAppSparkEl.innerHTML = '';
+      if (topAppSparkEl) topAppSparkEl.innerHTML = sparkSvg([0, 0, 0, 0, 0, 0, 0], '#cbd5e1', 260, 46);
     }
 
     // Token Efficiency
@@ -1568,47 +1573,59 @@ Write-Output $response.output`;
 
   function paintChart(granularity = 'daily') {
     activeChartGranularity = granularity;
-    const total = billingReportData ? (Number(billingReportData.totalSpendUsd) || 0) : 0;
     
-    // Scale bar heights relative to actual total spend or representative distribution
-    let seriesObj;
+    // Retrieve genuine real-time series data from backend telemetry
+    let trendPoints = [];
     if (granularity === 'daily') {
-      const base = total > 0 ? total / 7 : 0.5;
-      seriesObj = {
-        labels: ['Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Mon', 'Tue'],
-        vals: [0.7 * base, 0.85 * base, 1.1 * base, 0.4 * base, 0.35 * base, 1.2 * base, 1.8 * base]
-      };
+      trendPoints = billingReportData?.dailySpendTrend || [];
     } else if (granularity === 'weekly') {
-      const base = total > 0 ? total / 5 : 2.5;
-      seriesObj = {
-        labels: ['W31', 'W32', 'W33', 'W34', 'W35'],
-        vals: [0.8 * base, 0.95 * base, 1.1 * base, 0.9 * base, 1.25 * base]
-      };
+      trendPoints = billingReportData?.weeklySpendTrend || [];
     } else {
-      const base = total > 0 ? total / 5 : 8.0;
-      seriesObj = {
-        labels: ['Apr', 'May', 'Jun', 'Jul', 'Aug'],
-        vals: [0.7 * base, 0.85 * base, 1.15 * base, 1.0 * base, 1.3 * base]
-      };
+      trendPoints = billingReportData?.monthlySpendTrend || [];
     }
 
-    const { labels, vals } = seriesObj;
-    const mx = Math.max(...vals) || 1;
+    // Fallback if backend returned empty array
+    if (!trendPoints || trendPoints.length === 0) {
+      const now = new Date();
+      if (granularity === 'daily') {
+        trendPoints = Array.from({length: 7}, (_, i) => {
+          const d = new Date(now);
+          d.setDate(d.getDate() - (6 - i));
+          return { label: d.toLocaleDateString('en-US', { weekday: 'short' }), spendUsd: 0 };
+        });
+      } else if (granularity === 'weekly') {
+        trendPoints = ['W32', 'W33', 'W34', 'W35', 'W36'].map(w => ({ label: w, spendUsd: 0 }));
+      } else {
+        trendPoints = Array.from({length: 5}, (_, i) => {
+          const d = new Date(now);
+          d.setMonth(d.getMonth() - (4 - i));
+          return { label: d.toLocaleDateString('en-US', { month: 'short' }), spendUsd: 0 };
+        });
+      }
+    }
+
+    const labels = trendPoints.map(p => p.label);
+    const vals = trendPoints.map(p => Number(p.spendUsd) || 0);
+    const mx = Math.max(...vals);
     const w = 640;
     const h = 140;
     const gap = 12;
     const bw = (w - gap * (vals.length - 1)) / vals.length;
 
     const bars = vals.map((v, i) => {
-      const bh = Math.max(3, (v / mx) * (h - 38));
+      const hasSpend = mx > 0 && v > 0;
+      const bh = hasSpend ? Math.max(4, (v / mx) * (h - 40)) : 3;
       const x = i * (bw + gap);
       const y = h - 24 - bh;
-      const c = v === mx ? '#cbd5e1' : 'rgba(203, 213, 225, 0.35)';
-      return `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="3" fill="${c}">
+      const c = hasSpend ? (v === mx ? '#cbd5e1' : 'rgba(203, 213, 225, 0.4)') : 'rgba(255, 255, 255, 0.08)';
+      const valColor = hasSpend ? '#cbd5e1' : 'var(--ink-3)';
+      const valText = v > 0 ? `$${v.toFixed(3)}` : '$0';
+      
+      return `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="2" fill="${c}">
         <title>${labels[i]}: ${money(v)}</title>
       </rect>
-      <text x="${x + bw / 2}" y="${h - 8}" text-anchor="middle" font-size="11" fill="#6B7688" font-family="JetBrains Mono, monospace">${labels[i]}</text>
-      <text x="${x + bw / 2}" y="${Math.max(12, y - 6)}" text-anchor="middle" font-size="10.5" fill="#9AA5B8" font-family="JetBrains Mono, monospace">${money(v)}</text>`;
+      <text x="${x + bw / 2}" y="${h - 8}" text-anchor="middle" font-size="11" fill="var(--ink-3)" font-family="JetBrains Mono, monospace">${labels[i]}</text>
+      <text x="${x + bw / 2}" y="${Math.max(12, y - 6)}" text-anchor="middle" font-size="10.5" fill="${valColor}" font-family="JetBrains Mono, monospace">${valText}</text>`;
     }).join('');
 
     const chartContainer = document.getElementById('spend-chart-container');
@@ -1840,7 +1857,7 @@ Write-Output $response.output`;
     const retrievalApp = billingAppsList.find(a => a.outTok === 0 && a.inTok > 0);
     const generativeApp = billingAppsList.find(a => a.eff > 1.2);
     const totalSpend = billingReportData ? Number(billingReportData.totalSpendUsd) : 0;
-    const projectedMonthly = totalSpend > 0 ? (totalSpend * 4.3).toFixed(2) : '15.40';
+    const projectedMonthly = totalSpend > 0 ? (totalSpend * 4.3).toFixed(2) : '0.00';
 
     const items = [
       ['#FF5C6C', topApp && topApp.cost > 0 ? `High spend share — ${topApp.name}` : 'Cost distribution optimal',
