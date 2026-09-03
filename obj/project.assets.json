@@ -2,6 +2,22 @@
   "version": 4,
   "targets": {
     "net8.0": {
+      "AWSSDK.Bedrock/3.7.404.7": {
+        "type": "package",
+        "dependencies": {
+          "AWSSDK.Core": "[3.7.400.18, 4.0.0)"
+        },
+        "compile": {
+          "lib/net8.0/AWSSDK.Bedrock.dll": {
+            "related": ".pdb;.xml"
+          }
+        },
+        "runtime": {
+          "lib/net8.0/AWSSDK.Bedrock.dll": {
+            "related": ".pdb;.xml"
+          }
+        }
+      },
       "AWSSDK.BedrockRuntime/3.7.404.7": {
         "type": "package",
         "dependencies": {
@@ -676,6 +692,38 @@
     }
   },
   "libraries": {
+    "AWSSDK.Bedrock/3.7.404.7": {
+      "sha512": "JvSN0cvQ1Sr6pqvE9Q6te3cXaGlTfcDf6QUziaFCawjonnYQqYRq3KUM7biBe/aXGTOMHpijwlTpxqUWXuOzkQ==",
+      "type": "package",
+      "path": "awssdk.bedrock/3.7.404.7",
+      "hasTools": true,
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "analyzers/dotnet/cs/AWSSDK.Bedrock.CodeAnalysis.dll",
+        "analyzers/dotnet/cs/SharedAnalysisCode.dll",
+        "awssdk.bedrock.3.7.404.7.nupkg.sha512",
+        "awssdk.bedrock.nuspec",
+        "images/AWSLogo.png",
+        "lib/net35/AWSSDK.Bedrock.dll",
+        "lib/net35/AWSSDK.Bedrock.pdb",
+        "lib/net35/AWSSDK.Bedrock.xml",
+        "lib/net45/AWSSDK.Bedrock.dll",
+        "lib/net45/AWSSDK.Bedrock.pdb",
+        "lib/net45/AWSSDK.Bedrock.xml",
+        "lib/net8.0/AWSSDK.Bedrock.dll",
+        "lib/net8.0/AWSSDK.Bedrock.pdb",
+        "lib/net8.0/AWSSDK.Bedrock.xml",
+        "lib/netcoreapp3.1/AWSSDK.Bedrock.dll",
+        "lib/netcoreapp3.1/AWSSDK.Bedrock.pdb",
+        "lib/netcoreapp3.1/AWSSDK.Bedrock.xml",
+        "lib/netstandard2.0/AWSSDK.Bedrock.dll",
+        "lib/netstandard2.0/AWSSDK.Bedrock.pdb",
+        "lib/netstandard2.0/AWSSDK.Bedrock.xml",
+        "tools/install.ps1",
+        "tools/uninstall.ps1"
+      ]
+    },
     "AWSSDK.BedrockRuntime/3.7.404.7": {
       "sha512": "x0a+LImWb2/0sn0INxr1QNbaIyTqnFZgr8Rdsy91ESQMEr72b5azbvOR67Hfl+qOCenVnNad+/bJLxWu9qfLdQ==",
       "type": "package",
@@ -2016,6 +2064,7 @@
   },
   "projectFileDependencyGroups": {
     "net8.0": [
+      "AWSSDK.Bedrock >= 3.7.404.7",
       "AWSSDK.BedrockRuntime >= 3.7.404.7",
       "AWSSDK.Core >= 3.7.400.78",
       "AWSSDK.SecurityToken >= 3.7.401.4",
@@ -2081,6 +2130,10 @@
         "framework": "net8.0",
         "targetAlias": "net8.0",
         "dependencies": {
+          "AWSSDK.Bedrock": {
+            "target": "Package",
+            "version": "[3.7.404.7, )"
+          },
           "AWSSDK.BedrockRuntime": {
             "target": "Package",
             "version": "[3.7.404.7, )"

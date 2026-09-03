@@ -87,3 +87,7 @@ C:\Users\wasim\workspace\Projects\Unified-LLM-Gateway\obj\test_out\Swashbuckle.A
 C:\Users\wasim\workspace\Projects\Unified-LLM-Gateway\obj\test_out\Swashbuckle.AspNetCore.SwaggerUI.dll
 C:\Users\wasim\workspace\Projects\Unified-LLM-Gateway\obj\test_out\System.Security.Cryptography.Xml.dll
 C:\Users\wasim\workspace\Projects\Unified-LLM-Gateway\obj\test_out\data\app_registry.json
+C:\Users\wasim\workspace\Projects\Unified-LLM-Gateway\bin\Debug\net8.0\data\app_registry.json
+C:\Users\wasim\workspace\Projects\Unified-LLM-Gateway\obj\test_out\AWSSDK.Bedrock.dll
+C:\Users\wasim\workspace\Projects\Unified-LLM-Gateway\bin\Debug\net8.0\AWSSDK.Bedrock.dll
+C:\Users\wasim\workspace\Projects\Unified-LLM-Gateway\obj\Debug\net8.0\staticwebassets.upToDateCheck.txt

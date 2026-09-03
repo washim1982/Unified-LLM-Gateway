@@ -732,3 +732,830 @@ label {
 .code-font {
   font-family: var(--font-mono);
 }
+
+/* ==========================================================================
+   Spend & Cost Governance FinOps Dashboard Styles (spend-dashboard.html)
+   ========================================================================== */
+:root {
+  --spend: #4D8BFF;
+  --tokens: #A177FF;
+  --alert: #FF5C6C;
+  --ok: #3FD68A;
+  --warn: #F5B440;
+  --surface-finops: #161C27;
+  --surface-finops-2: #1B2231;
+  --line-finops: #232C3B;
+  --line-soft: #1E2634;
+  --ink-finops: #E6EAF2;
+  --ink-2: #9AA5B8;
+  --ink-3: #6B7688;
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.spend-header-top {
+  display: flex;
+  align-items: baseline;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 16px 0 20px;
+  border-bottom: 1px solid var(--line-finops);
+  margin-bottom: 22px;
+}
+
+.spend-scope {
+  color: var(--ink-2);
+  font-size: 13.5px;
+}
+
+.spend-scope b {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.spend-top-right {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.range-btn-group {
+  display: flex;
+  border: 1px solid var(--line-finops);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.range-btn-group button {
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--ink-2);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.range-btn-group button[aria-pressed=true],
+.range-btn-group button.active {
+  background: var(--surface-finops-2);
+  color: var(--text-main);
+  font-weight: 500;
+}
+
+.range-btn-group button + button {
+  border-left: 1px solid var(--line-finops);
+}
+
+/* Category Tick Section Headers */
+.sec {
+  margin: 30px 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sec .tick {
+  width: 3px;
+  height: 15px;
+  border-radius: 2px;
+  background: var(--spend);
+}
+
+.sec.tokens .tick { background: var(--tokens); }
+.sec.alerts .tick { background: var(--alert); }
+
+.sec h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -.005em;
+  color: var(--text-main);
+}
+
+.sec .note {
+  color: var(--ink-3);
+  font-size: 12.5px;
+  margin-left: 2px;
+}
+
+.panel-finops {
+  background: var(--surface-finops);
+  border: 1px solid var(--line-finops);
+  border-radius: 10px;
+}
+
+/* ---------- 1. Summary Hero & Tiles ---------- */
+.spend-summary {
+  display: grid;
+  grid-template-columns: 1.55fr 1fr 1fr;
+  gap: 14px;
+}
+
+.hero-finops {
+  padding: 20px 22px 18px;
+}
+
+.tile-label-finops {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  margin: 0 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+}
+
+.hero-finops .figure {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.hero-finops .amount {
+  font-size: 48px;
+  line-height: .95;
+  font-weight: 700;
+  letter-spacing: -.02em;
+}
+
+.hero-finops .amount.ok { color: var(--ok); }
+.hero-finops .amount.warn { color: var(--warn); }
+.hero-finops .amount.bad { color: var(--alert); }
+
+.delta-finops {
+  font-size: 13px;
+  padding-bottom: 6px;
+  color: var(--ink-2);
+}
+
+.delta-finops .up { color: var(--alert); font-weight: 500; }
+.delta-finops .down { color: var(--ok); font-weight: 500; }
+
+/* Threshold Meter */
+.meter-finops {
+  margin-top: 18px;
+}
+
+.meter-finops .track {
+  position: relative;
+  height: 7px;
+  border-radius: 4px;
+  display: flex;
+  overflow: hidden;
+  background: var(--surface-finops-2);
+}
+
+.meter-finops .track i {
+  display: block;
+  height: 100%;
+}
+
+.meter-finops .s1 { background: rgba(63, 214, 138, .55); }
+.meter-finops .s2 { background: rgba(245, 180, 64, .5); }
+.meter-finops .s3 { background: rgba(255, 92, 108, .45); }
+
+.meter-finops .pin {
+  position: absolute;
+  top: -4px;
+  width: 2px;
+  height: 15px;
+  background: #fff;
+  border-radius: 1px;
+  transform: translateX(-1px);
+  box-shadow: 0 0 4px rgba(255,255,255,0.8);
+  transition: left 0.3s ease;
+}
+
+.meter-finops .pin.ghost {
+  background: var(--tokens);
+  opacity: .85;
+  box-shadow: 0 0 4px var(--tokens);
+}
+
+.meter-finops .marks {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 7px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+}
+
+.split-finops {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: 14px;
+}
+
+.mini-finops {
+  padding: 15px 17px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.mini-finops .v {
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+
+.mini-finops .sub {
+  font-size: 12px;
+  color: var(--ink-3);
+  margin-top: 3px;
+}
+
+.mini-finops.in .v { color: var(--spend); }
+.mini-finops.out .v { color: var(--tokens); }
+
+.tile-finops {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.tile-finops .appname {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  color: var(--text-main);
+}
+
+.tile-finops .row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.tile-finops .cost {
+  font-size: 21px;
+  font-weight: 600;
+  color: var(--ok);
+}
+
+.tile-finops .share {
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.tile-finops .spark {
+  margin-top: auto;
+  padding-top: 14px;
+}
+
+.eff-tile .v {
+  font-size: 38px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  color: var(--tokens);
+}
+
+.eff-tile .expl {
+  font-size: 12.5px;
+  color: var(--ink-3);
+  margin-top: 8px;
+  max-width: 38ch;
+  line-height: 1.4;
+}
+
+.eff-tile .bar {
+  height: 5px;
+  background: var(--surface-finops-2);
+  border-radius: 3px;
+  margin-top: 14px;
+  overflow: hidden;
+}
+
+.eff-tile .bar i {
+  display: block;
+  height: 100%;
+  background: var(--tokens);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* ---------- 2. Analytics Blocks ---------- */
+.analytics-finops {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.block-finops {
+  padding: 20px 22px;
+}
+
+.block-finops h3 {
+  margin: 0 0 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.bars-finops {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.bars-finops .b {
+  display: grid;
+  grid-template-columns: 118px 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.bars-finops .b span {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.bars-finops .t {
+  height: 9px;
+  background: var(--surface-finops-2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.bars-finops .t i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.bars-finops .b.in .t i { background: var(--spend); }
+.bars-finops .b.out .t i { background: var(--tokens); }
+.bars-finops .b.total .t i { background: linear-gradient(90deg, var(--spend), var(--tokens)); }
+.bars-finops .val {
+  font-size: 13px;
+  min-width: 76px;
+  text-align: right;
+  color: var(--text-main);
+}
+
+dl.stats-finops {
+  margin: 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+dl.stats-finops div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+dl.stats-finops dt {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin: 0;
+}
+
+dl.stats-finops dd {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--text-main);
+}
+
+dl.stats-finops dd .unit {
+  color: var(--ink-3);
+  font-size: 11.5px;
+  margin-left: 3px;
+}
+
+/* ---------- 3. Table Toolbar & Grid ---------- */
+.toolbar-finops {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line-finops);
+}
+
+.search-finops {
+  position: relative;
+  flex: 1 1 240px;
+  min-width: 200px;
+}
+
+.search-finops input {
+  width: 100%;
+  padding: 9px 12px 9px 32px;
+  background: var(--bg-dark);
+  border: 1px solid var(--line-finops);
+  border-radius: 8px;
+  color: var(--text-main);
+  font-size: 13px;
+}
+
+.search-finops input::placeholder {
+  color: var(--ink-3);
+}
+
+.search-finops svg {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-3);
+}
+
+.select-finops, .numin-finops {
+  background: var(--bg-dark);
+  border: 1px solid var(--line-finops);
+  border-radius: 8px;
+  color: var(--text-main);
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.numin-finops {
+  width: 96px;
+}
+
+.pill-finops {
+  border: 1px solid var(--line-finops);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 13px;
+  color: var(--ink-2);
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pill-finops:hover {
+  color: var(--text-main);
+  background: var(--surface-finops-2);
+  border-color: var(--border-focus);
+}
+
+.exports-finops {
+  position: relative;
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+.tablewrap-finops {
+  max-height: 560px;
+  overflow: auto;
+}
+
+.table-finops {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 1080px;
+}
+
+.table-finops thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-finops-2);
+  text-align: left;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line-finops);
+  white-space: nowrap;
+}
+
+.table-finops thead th.n {
+  text-align: right;
+}
+
+.table-finops thead th button {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.table-finops thead th button:hover {
+  color: var(--text-main);
+}
+
+.table-finops thead th .arrow {
+  opacity: 0;
+  font-size: 10px;
+}
+
+.table-finops thead th[aria-sort] .arrow {
+  opacity: 1;
+  color: var(--spend);
+}
+
+.table-finops tbody td {
+  padding: 14px 14px;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 13.5px;
+  vertical-align: middle;
+}
+
+.table-finops tbody tr:hover {
+  background: #1A2130;
+}
+
+.table-finops tbody td.n {
+  text-align: right;
+}
+
+.app-finops {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-finops .nm {
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.host-finops {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  margin-top: 2px;
+}
+
+.model-finops {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-family: var(--font-mono);
+}
+
+.chip-finops {
+  font-size: 10.5px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--line-finops);
+  color: var(--ink-3);
+  font-family: var(--font-sans);
+}
+
+.sharecell-finops {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.sharebar-finops {
+  width: 74px;
+  height: 6px;
+  background: var(--surface-finops-2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.sharebar-finops i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+}
+
+.flag-finops {
+  margin-left: 6px;
+  cursor: help;
+  color: var(--warn);
+}
+
+.menu-btn-finops {
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: var(--ink-3);
+  font-size: 16px;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.menu-btn-finops:hover {
+  background: var(--surface-finops-2);
+  color: var(--text-main);
+}
+
+.menu-finops {
+  position: absolute;
+  z-index: 50;
+  background: var(--surface-finops-2);
+  border: 1px solid var(--line-finops);
+  border-radius: 9px;
+  padding: 5px;
+  min-width: 175px;
+  box-shadow: 0 14px 34px rgba(0,0,0,.6);
+}
+
+.menu-finops button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 13px;
+  border-radius: 6px;
+  color: var(--ink-2);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.menu-finops button:hover {
+  background: #222B3B;
+  color: var(--text-main);
+}
+
+.menu-finops button.danger:hover {
+  color: var(--alert);
+}
+
+.menu-finops hr {
+  border: 0;
+  border-top: 1px solid var(--line-finops);
+  margin: 5px 2px;
+}
+
+.pager-finops {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 16px;
+  color: var(--ink-2);
+  font-size: 13px;
+  border-top: 1px solid var(--line-finops);
+}
+
+.pager-finops .pgs {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+.pager-finops .pgs button {
+  padding: 5px 10px;
+  border: 1px solid var(--line-finops);
+  border-radius: 7px;
+  font-size: 12.5px;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.pager-finops .pgs button[aria-current=true],
+.pager-finops .pgs button.active {
+  background: var(--spend);
+  border-color: var(--spend);
+  color: #08101F;
+  font-weight: 600;
+}
+
+.pager-finops .pgs button:disabled {
+  opacity: .35;
+  cursor: default;
+}
+
+/* ---------- 4. Advanced: Anomalies & Rate Simulation ---------- */
+.adv-finops {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 14px;
+}
+
+.alerts-list-finops {
+  display: grid;
+  gap: 10px;
+}
+
+.alert-item-finops {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  padding: 13px 15px;
+  border: 1px solid var(--line-finops);
+  border-radius: 9px;
+  background: var(--surface-finops-2);
+}
+
+.alert-item-finops .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-top: 7px;
+}
+
+.alert-item-finops h4 {
+  margin: 0 0 3px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.alert-item-finops p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+
+.sim-finops {
+  padding: 20px 22px;
+}
+
+.sim-finops .controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.sim-finops input[type=range] {
+  flex: 1;
+  min-width: 160px;
+  accent-color: var(--tokens);
+  cursor: pointer;
+}
+
+.sim-finops .out {
+  display: flex;
+  gap: 26px;
+  flex-wrap: wrap;
+  padding-top: 16px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.sim-finops .out div .k {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.sim-finops .out div .v {
+  font-size: 22px;
+  font-weight: 600;
+  margin-top: 3px;
+  color: var(--text-main);
+}
+
+.sim-finops .out .v.up { color: var(--alert); }
+.sim-finops .out .v.down { color: var(--ok); }
+
+.toast-finops {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  background: var(--surface-finops-2);
+  border: 1px solid var(--spend);
+  color: var(--text-main);
+  border-radius: 9px;
+  padding: 11px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 12px 30px rgba(0,0,0,.6);
+  z-index: 100;
+  animation: fadeInToast 0.2s ease;
+}
+
+@keyframes fadeInToast {
+  from { opacity: 0; transform: translate(-50%, 10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@media (max-width: 1080px) {
+  .spend-summary, .analytics-finops, .adv-finops {
+    grid-template-columns: 1fr;
+  }
+  .split-finops {
+    grid-template-rows: none;
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .hero-finops .amount { font-size: 36px; }
+  .split-finops { grid-template-columns: 1fr; }
+  .exports-finops { margin-left: 0; }
+}

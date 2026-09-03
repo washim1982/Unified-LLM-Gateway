@@ -46,6 +46,10 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
           Telemetry & Metrics
         </button>
+        <button class="nav-btn" data-tab="billing">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/><line x1="7" y1="15" x2="11" y2="15"/></svg>
+          Billing & Costs
+        </button>
       </nav>
 
       <div class="sidebar-footer">
@@ -366,11 +370,16 @@
                 </select>
               </div>
               <div class="form-group">
-                <label>Model Identifier</label>
+                <label>Model Preset (Catalog)</label>
                 <select id="univ-model" class="form-control">
                   <!-- Populated dynamically -->
                 </select>
               </div>
+            </div>
+
+            <div class="form-group" style="margin-top:-6px; margin-bottom:12px;">
+              <label style="font-size:12px; color:var(--text-muted);">Model Identifier / ARN (Editable Text Box)</label>
+              <input type="text" id="univ-custom-model" class="form-control code-font" placeholder="e.g. anthropic.claude-3-5-sonnet-20241022-v2:0, amazon.nova-pro-v1:0, or local model" style="font-size:12px;">
             </div>
 
             <div class="form-group">
@@ -495,6 +504,181 @@
           </div>
         </div>
       </section>
+
+      <!-- TAB 6: Billing & Cost Governance (spend-dashboard.html layout) -->
+      <section class="tab-pane" id="pane-billing">
+        <!-- Top Scope / Time Range Controls -->
+        <div class="spend-header-top">
+          <div>
+            <h2 style="font-size:19px; font-weight:600; margin:0; letter-spacing:-.01em; color:var(--text-main);">Usage &amp; Spend</h2>
+            <span class="spend-scope">Unified LLM Gateway · <b id="spend-range-label">Last 7 days</b> · <span id="spend-last-updated">Live Updated</span></span>
+          </div>
+          <div class="spend-top-right">
+            <div class="range-btn-group" id="spend-top-range">
+              <button aria-pressed="false" data-r="24h">24h</button>
+              <button aria-pressed="true" class="active" data-r="7d">7d</button>
+              <button aria-pressed="false" data-r="30d">30d</button>
+            </div>
+            <button class="pill-finops" id="btn-spend-copy-api">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px; vertical-align:-2px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              Copy API endpoint
+            </button>
+            <button class="pill-finops" id="btn-spend-refresh" title="Refresh Billing & Telemetry">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px; vertical-align:-2px;"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        <!-- 1. SUMMARY HERO & SPLIT PANELS -->
+        <div class="spend-summary">
+          <!-- Hero Panel (Organization Spend & Budget Meter) -->
+          <div class="panel-finops hero-finops">
+            <p class="tile-label-finops">Organization spend</p>
+            <div class="figure">
+              <span class="amount num ok" id="spend-org-spend">$0.00</span>
+              <span class="delta-finops" id="spend-org-delta"><span class="up">▲ 18.4%</span> vs prior period</span>
+            </div>
+            <div class="meter-finops">
+              <div class="track">
+                <i class="s1" style="width:20%"></i><i class="s2" style="width:50%"></i><i class="s3" style="width:30%"></i>
+                <span class="pin" id="spend-pin" style="left:0%"></span>
+                <span class="pin ghost" id="spend-pin-ghost" hidden></span>
+              </div>
+              <div class="marks"><span>$0</span><span>$1</span><span>$10</span><span>$25+</span></div>
+            </div>
+          </div>
+
+          <!-- Split Mini Panels (Input Cost & Output Cost) -->
+          <div class="split-finops">
+            <div class="panel-finops mini-finops in">
+              <p class="tile-label-finops">Input cost</p>
+              <div class="v num" id="spend-in-cost">$0.00</div>
+              <div class="sub"><span class="num" id="spend-in-tokens">0</span> tokens in</div>
+            </div>
+            <div class="panel-finops mini-finops out">
+              <p class="tile-label-finops">Output cost</p>
+              <div class="v num" id="spend-out-cost">$0.00</div>
+              <div class="sub"><span class="num" id="spend-out-tokens">0</span> tokens out</div>
+            </div>
+          </div>
+
+          <!-- Top Spending Application Tile -->
+          <div class="panel-finops tile-finops" id="spend-top-app-tile">
+            <p class="tile-label-finops">Top spending app</p>
+            <div class="appname" id="spend-top-app-name">—</div>
+            <div class="row">
+              <span class="cost num" id="spend-top-app-cost">$0.00</span>
+              <span class="share" id="spend-top-app-share">0% of spend</span>
+            </div>
+            <div class="spark" id="spend-top-app-spark"></div>
+          </div>
+        </div>
+
+        <!-- Token Efficiency & Spend Over Time Chart -->
+        <div class="spend-summary" style="margin-top:14px; grid-template-columns:1.55fr 2fr;">
+          <div class="panel-finops tile-finops eff-tile">
+            <p class="tile-label-finops">Token efficiency</p>
+            <div class="v num" id="spend-eff-score">0.000×</div>
+            <div class="bar"><i id="spend-eff-bar" style="width:0%"></i></div>
+            <p class="expl">Output tokens generated per input token. Embedding and retrieval workloads pull this down; chat and agent loops push it up.</p>
+          </div>
+          <div class="panel-finops block-finops">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+              <h3 style="margin:0; font-size:14px; font-weight:600; color:var(--text-main);">Spend over time</h3>
+              <div class="range-btn-group" id="spend-chart-range">
+                <button aria-pressed="true" class="active" data-g="daily">Daily</button>
+                <button aria-pressed="false" data-g="weekly">Weekly</button>
+                <button aria-pressed="false" data-g="monthly">Monthly</button>
+              </div>
+            </div>
+            <div id="spend-chart-container" style="min-height:140px;"></div>
+          </div>
+        </div>
+
+        <!-- 2. TOKEN & COST ANALYTICS -->
+        <div class="sec tokens"><span class="tick"></span><h2>Token &amp; cost analytics</h2><span class="note">across all active apps</span></div>
+        <div class="analytics-finops">
+          <div class="panel-finops block-finops">
+            <h3>Token breakdown</h3>
+            <div class="bars-finops" id="spend-token-bars"></div>
+            <dl class="stats-finops" id="spend-token-stats"></dl>
+          </div>
+          <div class="panel-finops block-finops">
+            <h3>Cost breakdown</h3>
+            <div class="bars-finops" id="spend-cost-bars"></div>
+            <dl class="stats-finops" id="spend-cost-stats"></dl>
+          </div>
+        </div>
+
+        <!-- 3. APPLICATIONS TABLE -->
+        <div class="sec"><span class="tick"></span><h2>Applications</h2><span class="note" id="spend-table-count">0 apps</span></div>
+        <div class="panel-finops">
+          <div class="toolbar-finops">
+            <div class="search-finops">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+              <input id="spend-search-input" type="search" placeholder="Search apps and models" autocomplete="off">
+            </div>
+            <select class="select-finops" id="spend-filter-model"><option value="">All models</option></select>
+            <select class="select-finops" id="spend-filter-host"><option value="">Local and cloud</option><option value="local">Local only</option><option value="bedrock">Cloud (Bedrock) only</option></select>
+            <input class="numin-finops num" id="spend-filter-cost" type="number" step="0.01" min="0" placeholder="Min $">
+            <input class="numin-finops num" id="spend-filter-eff" type="number" step="0.05" min="0" placeholder="Min eff ×">
+            <button class="pill-finops" id="spend-clear-filters">Clear</button>
+            <div class="exports-finops">
+              <button class="pill-finops" data-export="csv" id="spend-export-csv">CSV</button>
+              <button class="pill-finops" data-export="json" id="spend-export-json">JSON</button>
+              <button class="pill-finops" data-export="xls" id="spend-export-xls">Excel</button>
+            </div>
+          </div>
+
+          <div class="tablewrap-finops">
+            <table class="table-finops">
+              <thead>
+                <tr>
+                  <th><button data-sort="name">App<span class="arrow">▼</span></button></th>
+                  <th><button data-sort="model">Model<span class="arrow">▼</span></button></th>
+                  <th class="n"><button data-sort="inTok">Input<span class="arrow">▼</span></button></th>
+                  <th class="n"><button data-sort="outTok">Output<span class="arrow">▼</span></button></th>
+                  <th class="n"><button data-sort="totTok">Total<span class="arrow">▼</span></button></th>
+                  <th class="n"><button data-sort="cost">Cost<span class="arrow">▼</span></button></th>
+                  <th class="n"><button data-sort="cost">Spend share<span class="arrow">▼</span></button></th>
+                  <th class="n">Trend</th>
+                  <th style="width:44px"></th>
+                </tr>
+              </thead>
+              <tbody id="spend-table-body">
+                <tr><td colspan="9" style="text-align:center; padding:30px; color:var(--ink-3);">Loading applications &amp; cost data...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="pager-finops">
+            <span id="spend-pager-info">Showing 0 of 0</span>
+            <div class="pgs" id="spend-pager-buttons"></div>
+          </div>
+        </div>
+
+        <!-- 4. ANOMALIES & RATE SIMULATION -->
+        <div class="sec alerts"><span class="tick"></span><h2>Anomalies &amp; forecasting</h2></div>
+        <div class="adv-finops">
+          <div class="panel-finops block-finops">
+            <h3>Detected Insights &amp; Anomalies</h3>
+            <div class="alerts-list-finops" id="spend-alerts-list"></div>
+          </div>
+          <div class="panel-finops sim-finops">
+            <h3 style="margin:0 0 16px; font-size:14px; font-weight:600; color:var(--text-main);">Rate override simulation</h3>
+            <div class="controls">
+              <select class="select-finops" id="sim-scope"><option value="cloud">All cloud models</option><option value="all">Every app</option></select>
+              <input id="sim-rate-slider" type="range" min="0" max="30" step="0.5" value="15">
+              <span class="num" id="sim-rate-label" style="min-width:96px; text-align:right; font-weight:600; color:var(--tokens);">$15.00 / M out</span>
+            </div>
+            <div class="out">
+              <div><div class="k">Projected org spend</div><div class="v num" id="sim-projected-spend">$0.00</div></div>
+              <div><div class="k">Change</div><div class="v num" id="sim-delta">—</div></div>
+              <div><div class="k">Cost per 1K tokens</div><div class="v num" id="sim-per-1k">$0.0000</div></div>
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
 
@@ -531,8 +715,39 @@
               </select>
             </div>
             <div class="form-group">
-              <label>Primary Model</label>
+              <label style="display:flex; justify-content:space-between; align-items:center;">
+                <span>Select from Catalog</span>
+                <span id="modal-model-sync-badge" class="badge" style="font-size:10px; background:rgba(59,130,246,0.15); color:#60a5fa;">Catalog</span>
+              </label>
               <select id="modal-app-model" class="form-control"></select>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top:-4px; margin-bottom:12px;">
+            <label style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--text-main);">
+              <span>Primary Model ID / Custom ARN (Editable Text Box)</span>
+            </label>
+            <input type="text" id="modal-app-custom-model" class="form-control code-font" placeholder="e.g. anthropic.claude-3-5-sonnet-20241022-v2:0, amazon.nova-pro-v1:0, or arn:aws:bedrock:..." style="font-size:12px;">
+            <small style="color:var(--text-muted); font-size:11px;">You can pick from the dropdown above or type/paste any custom Bedrock model ID, cross-region profile ARN, or local tag directly here.</small>
+          </div>
+
+          <!-- Token Pricing Configuration ($ / 1M Tokens) -->
+          <div class="form-row" style="background:rgba(59,130,246,0.05); padding:10px 12px; border:1px solid rgba(59,130,246,0.2); border-radius:8px; margin-bottom:12px;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label style="display:flex; justify-content:space-between; align-items:center;">
+                <span>Input Token Cost ($ / 1M)</span>
+                <span class="badge" style="font-size:10px; background:rgba(59,130,246,0.2); color:#60a5fa;">Prompt Rate</span>
+              </label>
+              <input type="number" id="modal-app-input-cost" class="form-control" value="3.00" step="0.0001" min="0" placeholder="e.g. 3.00">
+              <small style="color:var(--text-muted); font-size:11px;">Cost charged per 1,000,000 prompt tokens.</small>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label style="display:flex; justify-content:space-between; align-items:center;">
+                <span>Output Token Cost ($ / 1M)</span>
+                <span class="badge" style="font-size:10px; background:rgba(167,139,250,0.2); color:#a78bfa;">Generation Rate</span>
+              </label>
+              <input type="number" id="modal-app-output-cost" class="form-control" value="15.00" step="0.0001" min="0" placeholder="e.g. 15.00">
+              <small style="color:var(--text-muted); font-size:11px;">Cost charged per 1,000,000 generation tokens.</small>
             </div>
           </div>
 
@@ -733,6 +948,65 @@
       <div class="modal-footer">
         <button class="btn btn-outline" id="btn-close-rotate-modal-bottom">Close</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Edit Application Pricing & Configuration Modal -->
+  <div class="modal-backdrop" id="edit-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Edit Application Pricing & Settings</h3>
+        <button class="close-btn" id="btn-close-edit-modal">&times;</button>
+      </div>
+      <form id="edit-app-form">
+        <div class="modal-body">
+          <input type="hidden" id="edit-app-id">
+
+          <div class="form-group">
+            <label>Application Name</label>
+            <input type="text" id="edit-app-name" class="form-control" required>
+          </div>
+
+          <div class="form-group">
+            <label>Description</label>
+            <input type="text" id="edit-app-desc" class="form-control">
+          </div>
+
+          <!-- Token Pricing Configuration ($ / 1M Tokens) -->
+          <div class="form-row" style="background:rgba(59,130,246,0.05); padding:10px 12px; border:1px solid rgba(59,130,246,0.2); border-radius:8px; margin-bottom:12px;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label style="display:flex; justify-content:space-between; align-items:center;">
+                <span>Input Token Cost ($ / 1M)</span>
+                <span class="badge" style="font-size:10px; background:rgba(59,130,246,0.2); color:#60a5fa;">Prompt Rate</span>
+              </label>
+              <input type="number" id="edit-app-input-cost" class="form-control" step="0.0001" min="0" required>
+              <small style="color:var(--text-muted); font-size:11px;">Cost charged per 1,000,000 prompt tokens.</small>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label style="display:flex; justify-content:space-between; align-items:center;">
+                <span>Output Token Cost ($ / 1M)</span>
+                <span class="badge" style="font-size:10px; background:rgba(167,139,250,0.2); color:#a78bfa;">Generation Rate</span>
+              </label>
+              <input type="number" id="edit-app-output-cost" class="form-control" step="0.0001" min="0" required>
+              <small style="color:var(--text-muted); font-size:11px;">Cost charged per 1,000,000 generation tokens.</small>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Primary Model ID / Custom ARN</label>
+            <input type="text" id="edit-app-model" class="form-control code-font">
+          </div>
+
+          <div class="form-group">
+            <label>Allowed Host IPs / CIDRs (Optional)</label>
+            <input type="text" id="edit-app-cidrs" class="form-control" placeholder="e.g. 10.240.12.50/32, 192.168.1.0/24">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" id="btn-cancel-edit">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Pricing & Settings</button>
+        </div>
+      </form>
     </div>
   </div>
 

@@ -14,6 +14,7 @@ public class ModelRouterTests
     private readonly Mock<IApplicationRegistryService> _mockRegistry = new();
     private readonly Mock<IGuardrailService> _mockGuardrail = new();
     private readonly Mock<IAuditLogService> _mockAuditLog = new();
+    private readonly Mock<IPrometheusMetricsService> _mockPrometheus = new();
     private readonly IOptions<GatewayOptions> _options = Options.Create(new GatewayOptions());
 
     public ModelRouterTests()
@@ -51,6 +52,7 @@ public class ModelRouterTests
             _mockRegistry.Object,
             _mockGuardrail.Object,
             _mockAuditLog.Object,
+            _mockPrometheus.Object,
             _options,
             NullLogger<ModelRouter>.Instance);
 
@@ -91,6 +93,7 @@ public class ModelRouterTests
             _mockRegistry.Object,
             _mockGuardrail.Object,
             _mockAuditLog.Object,
+            _mockPrometheus.Object,
             _options,
             NullLogger<ModelRouter>.Instance);
 
@@ -143,6 +146,7 @@ public class ModelRouterTests
             _mockRegistry.Object,
             _mockGuardrail.Object,
             _mockAuditLog.Object,
+            _mockPrometheus.Object,
             _options,
             NullLogger<ModelRouter>.Instance);
 
@@ -185,6 +189,7 @@ public class ModelRouterTests
             _mockRegistry.Object,
             _mockGuardrail.Object,
             _mockAuditLog.Object,
+            _mockPrometheus.Object,
             _options,
             NullLogger<ModelRouter>.Instance);
 
@@ -238,6 +243,7 @@ public class ModelRouterTests
             _mockRegistry.Object,
             _mockGuardrail.Object,
             _mockAuditLog.Object,
+            _mockPrometheus.Object,
             _options,
             NullLogger<ModelRouter>.Instance);
 
@@ -288,6 +294,7 @@ public class ModelRouterTests
             _mockRegistry.Object,
             _mockGuardrail.Object,
             _mockAuditLog.Object,
+            _mockPrometheus.Object,
             _options,
             NullLogger<ModelRouter>.Instance);
 

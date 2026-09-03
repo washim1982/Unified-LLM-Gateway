@@ -53,6 +53,10 @@
           "framework": "net8.0",
           "targetAlias": "net8.0",
           "dependencies": {
+            "AWSSDK.Bedrock": {
+              "target": "Package",
+              "version": "[3.7.404.7, )"
+            },
             "AWSSDK.BedrockRuntime": {
               "target": "Package",
               "version": "[3.7.404.7, )"

@@ -61,6 +61,13 @@ public record AppConfig
     [JsonPropertyName("allowedCidrs")]
     public List<string> AllowedCidrs { get; init; } = [];
 
+    // Financial & Token Cost Configuration ($ per Million Tokens)
+    [JsonPropertyName("inputCostPerMillion")]
+    public double InputCostPerMillion { get; init; } = 3.00;
+
+    [JsonPropertyName("outputCostPerMillion")]
+    public double OutputCostPerMillion { get; init; } = 15.00;
+
     [JsonPropertyName("version")]
     public int Version { get; init; } = 1;
 
@@ -100,6 +107,12 @@ public record AppConfigSnapshot
     [JsonPropertyName("allowedCidrs")]
     public List<string> AllowedCidrs { get; init; } = [];
 
+    [JsonPropertyName("inputCostPerMillion")]
+    public double InputCostPerMillion { get; init; } = 3.00;
+
+    [JsonPropertyName("outputCostPerMillion")]
+    public double OutputCostPerMillion { get; init; } = 15.00;
+
     [JsonPropertyName("savedAt")]
     public DateTimeOffset SavedAt { get; init; }
 }
@@ -138,6 +151,12 @@ public record CreateAppRequest
 
     [JsonPropertyName("allowedCidrs")]
     public List<string> AllowedCidrs { get; init; } = [];
+
+    [JsonPropertyName("inputCostPerMillion")]
+    public double InputCostPerMillion { get; init; } = 3.00;
+
+    [JsonPropertyName("outputCostPerMillion")]
+    public double OutputCostPerMillion { get; init; } = 15.00;
 }
 
 public record CreateAppResponse
@@ -192,6 +211,12 @@ public record UpdateAppRequest
 
     [JsonPropertyName("allowedCidrs")]
     public List<string>? AllowedCidrs { get; init; }
+
+    [JsonPropertyName("inputCostPerMillion")]
+    public double? InputCostPerMillion { get; init; }
+
+    [JsonPropertyName("outputCostPerMillion")]
+    public double? OutputCostPerMillion { get; init; }
 
     [JsonPropertyName("isActive")]
     public bool? IsActive { get; init; }

@@ -19,10 +19,10 @@
     "allowedCidrs": [],
     "inputCostPerMillion": 3,
     "outputCostPerMillion": 15,
-    "version": 2,
+    "version": 3,
     "isActive": true,
     "createdAt": "2026-09-03T02:31:45.6382875+00:00",
-    "updatedAt": "2026-09-03T03:13:14.3637958+00:00",
+    "updatedAt": "2026-09-03T03:30:53.8598749+00:00",
     "versionHistory": [
       {
         "version": 1,
@@ -35,6 +35,18 @@
         "inputCostPerMillion": 3,
         "outputCostPerMillion": 15,
         "savedAt": "2026-09-03T02:31:45.6383181+00:00"
+      },
+      {
+        "version": 2,
+        "provider": "local",
+        "model": "ollama/qwen3.8:27b",
+        "systemPrompt": "",
+        "temperature": 0.7,
+        "maxTokens": 2048,
+        "allowedCidrs": [],
+        "inputCostPerMillion": 3,
+        "outputCostPerMillion": 15,
+        "savedAt": "2026-09-03T03:13:14.3637958+00:00"
       }
     ]
   }

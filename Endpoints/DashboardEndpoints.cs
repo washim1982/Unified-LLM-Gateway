@@ -1,4 +1,8 @@
+using Amazon;
+using Amazon.Bedrock;
+using Amazon.Bedrock.Model;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using UnifiedGateway.Models;
 using UnifiedGateway.Services;
 
@@ -140,13 +144,31 @@ public static class DashboardEndpoints
 
         #region Telemetry, Analytics & Audit Endpoints
 
-        // Real-time metrics and analytics summary
+        // Prometheus Standard Text Scraper Endpoint (/metrics)
+        app.MapGet("/metrics", (IPrometheusMetricsService metricsService) =>
+        {
+            var text = metricsService.GeneratePrometheusMetricsText();
+            return Results.Text(text, "text/plain; version=0.0.4; charset=utf-8");
+        })
+        .WithName("PrometheusMetrics")
+        .WithTags("Observability & Prometheus")
+        .WithSummary("Standard Prometheus text exposition scrape endpoint (version 0.0.4)");
+
+        // Real-time JSON metrics and analytics summary for Web Dashboard
         group.MapGet("/metrics", async (IApplicationRegistryService registry, CancellationToken ct) =>
         {
             var summary = await registry.GetMetricsSummaryAsync(ct);
             return Results.Ok(summary);
         })
         .WithName("GetMetrics");
+
+        // Alias for Prometheus text metrics under /api/metrics/prometheus
+        group.MapGet("/metrics/prometheus", (IPrometheusMetricsService metricsService) =>
+        {
+            var text = metricsService.GeneratePrometheusMetricsText();
+            return Results.Text(text, "text/plain; version=0.0.4; charset=utf-8");
+        })
+        .WithName("GetPrometheusMetricsText");
 
         // Query persistent compliance audit logs
         group.MapGet("/audit/logs", async (
@@ -199,27 +221,134 @@ public static class DashboardEndpoints
         .WithName("ExportAuditLogs")
         .WithSummary("Export persistent audit log trail as CSV file");
 
-        // List supported and available models across Bedrock and Local
-        group.MapGet("/models", async (ILocalModelService localService, CancellationToken ct) =>
+        // Organization Billing & Cost Governance Summary
+        group.MapGet("/billing", async (IApplicationRegistryService registry, CancellationToken ct) =>
         {
-            var bedrockModels = new[]
-            {
-                new { id = "anthropic.claude-3-5-sonnet-20240620-v1:0", name = "Claude 3.5 Sonnet", provider = "bedrock", contextWindow = 200000 },
-                new { id = "anthropic.claude-3-haiku-20240307-v1:0", name = "Claude 3 Haiku", provider = "bedrock", contextWindow = 200000 },
-                new { id = "anthropic.claude-3-opus-20240229-v1:0", name = "Claude 3 Opus", provider = "bedrock", contextWindow = 200000 },
-                new { id = "meta.llama3-70b-instruct-v1:0", name = "Meta Llama 3 70B", provider = "bedrock", contextWindow = 8192 },
-                new { id = "meta.llama3-8b-instruct-v1:0", name = "Meta Llama 3 8B", provider = "bedrock", contextWindow = 8192 },
-                new { id = "mistral.mistral-7b-instruct-v0:2", name = "Mistral 7B Instruct", provider = "bedrock", contextWindow = 32000 },
-                new { id = "mistral.mixtral-8x7b-instruct-v0:1", name = "Mixtral 8x7B", provider = "bedrock", contextWindow = 32000 },
-                new { id = "amazon.titan-text-express-v1", name = "Amazon Titan Text Express", provider = "bedrock", contextWindow = 8000 }
-            };
+            var summary = await registry.GetBillingSummaryAsync(ct);
+            return Results.Ok(summary);
+        })
+        .WithName("GetBillingSummary")
+        .WithSummary("Get organization-wide financial summary and per-application token billing breakdown");
 
-            var localModels = await localService.ListAvailableLocalModelsAsync(ct);
+        // Export Billing & Cost Governance Report as CSV
+        group.MapGet("/billing/export", async (IApplicationRegistryService registry, CancellationToken ct) =>
+        {
+            var csv = await registry.ExportBillingCsvAsync(ct);
+            var fileName = $"billing_report_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv";
+            return Results.File(System.Text.Encoding.UTF8.GetBytes(csv), "text/csv", fileName);
+        })
+        .WithName("ExportBillingCsv")
+        .WithSummary("Export application billing and token cost report as CSV spreadsheet");
+
+        // List supported and available models across Bedrock and Local (Dynamic Live Sync with Fallback)
+        group.MapGet("/models", async (
+            ILocalModelService localService,
+            ISTSService stsService,
+            IOptions<GatewayOptions> gatewayOptions,
+            CancellationToken ct) =>
+        {
+            var bedrockModels = new List<object>();
+            var isLiveAws = false;
+
+            try
+            {
+                var stsStatus = await stsService.GetStatusAsync(ct);
+                if (stsStatus.IsInitialized)
+                {
+                    var credentials = await stsService.GetCredentialsAsync(ct);
+                    var region = RegionEndpoint.GetBySystemName(gatewayOptions.Value.Aws.Region);
+                    using var bedrockClient = new AmazonBedrockClient(credentials, region);
+
+                    var response = await bedrockClient.ListFoundationModelsAsync(new ListFoundationModelsRequest
+                    {
+                        ByOutputModality = ModelModality.TEXT
+                    }, ct);
+
+                    if (response.ModelSummaries != null && response.ModelSummaries.Count > 0)
+                    {
+                        bedrockModels.AddRange(response.ModelSummaries
+                            .Where(m => m.InferenceTypesSupported?.Contains(InferenceType.ON_DEMAND) == true || (m.InferenceTypesSupported?.Count ?? 0) == 0)
+                            .OrderBy(m => m.ProviderName)
+                            .ThenBy(m => m.ModelName)
+                            .Select(m => {
+                                var rate = ModelPricingCatalog.GetDefaultRate("bedrock", m.ModelId);
+                                return new
+                                {
+                                    id = m.ModelId,
+                                    name = $"{m.ProviderName} {m.ModelName} ({m.ModelId})",
+                                    provider = "bedrock",
+                                    contextWindow = 200000,
+                                    isLive = true,
+                                    defaultInputCost = rate.InputCostPerMillion,
+                                    defaultOutputCost = rate.OutputCostPerMillion
+                                };
+                            }));
+                        isLiveAws = true;
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // Fall back to comprehensive curated list if offline or unconfigured
+            }
+
+            if (bedrockModels.Count == 0)
+            {
+                var curated = new[]
+                {
+                    ("anthropic.claude-3-5-sonnet-20241022-v2:0", "Claude 3.5 Sonnet v2 (anthropic.claude-3-5-sonnet-20241022-v2:0)", 200000),
+                    ("anthropic.claude-3-5-sonnet-20240620-v1:0", "Claude 3.5 Sonnet v1 (anthropic.claude-3-5-sonnet-20240620-v1:0)", 200000),
+                    ("anthropic.claude-3-5-haiku-20241022-v1:0", "Claude 3.5 Haiku (anthropic.claude-3-5-haiku-20241022-v1:0)", 200000),
+                    ("anthropic.claude-3-haiku-20240307-v1:0", "Claude 3 Haiku (anthropic.claude-3-haiku-20240307-v1:0)", 200000),
+                    ("anthropic.claude-3-opus-20240229-v1:0", "Claude 3 Opus (anthropic.claude-3-opus-20240229-v1:0)", 200000),
+                    ("amazon.nova-pro-v1:0", "Amazon Nova Pro (amazon.nova-pro-v1:0)", 300000),
+                    ("amazon.nova-lite-v1:0", "Amazon Nova Lite (amazon.nova-lite-v1:0)", 300000),
+                    ("amazon.nova-micro-v1:0", "Amazon Nova Micro (amazon.nova-micro-v1:0)", 128000),
+                    ("meta.llama3-2-90b-instruct-v1:0", "Meta Llama 3.2 90B (meta.llama3-2-90b-instruct-v1:0)", 128000),
+                    ("meta.llama3-2-11b-instruct-v1:0", "Meta Llama 3.2 11B (meta.llama3-2-11b-instruct-v1:0)", 128000),
+                    ("meta.llama3-1-70b-instruct-v1:0", "Meta Llama 3.1 70B (meta.llama3-1-70b-instruct-v1:0)", 128000),
+                    ("meta.llama3-1-8b-instruct-v1:0", "Meta Llama 3.1 8B (meta.llama3-1-8b-instruct-v1:0)", 128000),
+                    ("meta.llama3-70b-instruct-v1:0", "Meta Llama 3 70B (meta.llama3-70b-instruct-v1:0)", 8192),
+                    ("meta.llama3-8b-instruct-v1:0", "Meta Llama 3 8B (meta.llama3-8b-instruct-v1:0)", 8192),
+                    ("mistral.mistral-large-2407-v1:0", "Mistral Large 2 (mistral.mistral-large-2407-v1:0)", 128000),
+                    ("mistral.mistral-7b-instruct-v0:2", "Mistral 7B Instruct (mistral.mistral-7b-instruct-v0:2)", 32000),
+                    ("mistral.mixtral-8x7b-instruct-v0:1", "Mixtral 8x7B (mistral.mixtral-8x7b-instruct-v0:1)", 32000),
+                    ("cohere.command-r-plus-v1:0", "Cohere Command R+ (cohere.command-r-plus-v1:0)", 128000),
+                    ("amazon.titan-text-express-v1", "Amazon Titan Text Express (amazon.titan-text-express-v1)", 8000)
+                };
+
+                bedrockModels.AddRange(curated.Select(c => {
+                    var rate = ModelPricingCatalog.GetDefaultRate("bedrock", c.Item1);
+                    return (object)new
+                    {
+                        id = c.Item1,
+                        name = c.Item2,
+                        provider = "bedrock",
+                        contextWindow = c.Item3,
+                        isLive = false,
+                        defaultInputCost = rate.InputCostPerMillion,
+                        defaultOutputCost = rate.OutputCostPerMillion
+                    };
+                }));
+            }
+
+            var localRaw = await localService.ListAvailableLocalModelsAsync(ct);
+            var localModels = localRaw.Select(m => new
+            {
+                id = m,
+                name = m,
+                provider = "local",
+                contextWindow = 8192,
+                isLive = true,
+                defaultInputCost = 0.00,
+                defaultOutputCost = 0.00
+            }).ToList();
 
             return Results.Ok(new
             {
                 bedrock = bedrockModels,
-                local = localModels
+                local = localModels,
+                isLiveBedrockSynced = isLiveAws
             });
         })
         .WithName("GetModels");

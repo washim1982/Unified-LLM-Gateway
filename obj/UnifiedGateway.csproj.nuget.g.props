@@ -22,5 +22,6 @@
     <PkgAWSSDK_Core Condition=" '$(PkgAWSSDK_Core)' == '' ">C:\Users\wasim\.nuget\packages\awssdk.core\3.7.400.78</PkgAWSSDK_Core>
     <PkgAWSSDK_SecurityToken Condition=" '$(PkgAWSSDK_SecurityToken)' == '' ">C:\Users\wasim\.nuget\packages\awssdk.securitytoken\3.7.401.4</PkgAWSSDK_SecurityToken>
     <PkgAWSSDK_BedrockRuntime Condition=" '$(PkgAWSSDK_BedrockRuntime)' == '' ">C:\Users\wasim\.nuget\packages\awssdk.bedrockruntime\3.7.404.7</PkgAWSSDK_BedrockRuntime>
+    <PkgAWSSDK_Bedrock Condition=" '$(PkgAWSSDK_Bedrock)' == '' ">C:\Users\wasim\.nuget\packages\awssdk.bedrock\3.7.404.7</PkgAWSSDK_Bedrock>
   </PropertyGroup>
 </Project>

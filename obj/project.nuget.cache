@@ -1,9 +1,10 @@
 {
   "version": 2,
-  "dgSpecHash": "STLxYa+sUUo=",
+  "dgSpecHash": "rgAHgtDdi0w=",
   "success": true,
   "projectFilePath": "C:\\Users\\wasim\\workspace\\Projects\\Unified-LLM-Gateway\\UnifiedGateway.csproj",
   "expectedPackageFiles": [
+    "C:\\Users\\wasim\\.nuget\\packages\\awssdk.bedrock\\3.7.404.7\\awssdk.bedrock.3.7.404.7.nupkg.sha512",
     "C:\\Users\\wasim\\.nuget\\packages\\awssdk.bedrockruntime\\3.7.404.7\\awssdk.bedrockruntime.3.7.404.7.nupkg.sha512",
     "C:\\Users\\wasim\\.nuget\\packages\\awssdk.core\\3.7.400.78\\awssdk.core.3.7.400.78.nupkg.sha512",
     "C:\\Users\\wasim\\.nuget\\packages\\awssdk.securitytoken\\3.7.401.4\\awssdk.securitytoken.3.7.401.4.nupkg.sha512",

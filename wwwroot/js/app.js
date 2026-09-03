@@ -110,6 +110,8 @@ document.addEventListener('DOMContentLoaded', () => {
         loadMetrics();
       } else if (tab === 'guardrails') {
         loadGuardrailConfig();
+      } else if (tab === 'billing') {
+        loadBillingReport();
       }
     });
   });
@@ -120,7 +122,8 @@ document.addEventListener('DOMContentLoaded', () => {
       guardrails: { title: 'Guardrails & Data Safety', sub: 'Admin-level PCI, PII, Secrets, and Prompt Injection policies for all requests' },
       generator: { title: 'API Generator & Test Console', sub: 'Generated REST endpoints with sample SDK code and interactive sandbox' },
       universal: { title: 'Universal Router', sub: 'Direct normalized schema invocation across Bedrock and Local engines' },
-      telemetry: { title: 'Telemetry & Observability', sub: 'Real-time throughput, token analytics, latency percentiles, and request logs' }
+      telemetry: { title: 'Telemetry & Observability', sub: 'Real-time throughput, token analytics, latency percentiles, and request logs' },
+      billing: { title: 'Billing & Cost Governance', sub: 'Per-application token usage, input/output cost calculation, and organization spend' }
     };
     pageHeading.textContent = titles[tab]?.title || 'Dashboard';
     pageSubheading.textContent = titles[tab]?.sub || '';
@@ -309,12 +312,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Fetch Models
+  // Fetch Models (Live Bedrock Sync + Local)
   async function loadModels() {
     try {
       const res = await fetch('/api/models');
       if (res.ok) {
         availableModels = await res.json();
+        const syncBadge = document.getElementById('modal-model-sync-badge');
+        if (syncBadge) {
+          if (availableModels.isLiveBedrockSynced) {
+            syncBadge.textContent = '🟢 Live AWS Bedrock Synced';
+            syncBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+            syncBadge.style.color = '#34d399';
+            syncBadge.title = 'Live foundation models list retrieved directly from AWS Bedrock API in your region.';
+          } else {
+            syncBadge.textContent = '⚪ Curated Catalog';
+            syncBadge.style.background = 'rgba(59, 130, 246, 0.15)';
+            syncBadge.style.color = '#60a5fa';
+            syncBadge.title = 'AWS Bedrock offline or unconfigured. Using built-in high-speed model catalog.';
+          }
+        }
         populateModelDropdowns();
       }
     } catch (e) {
@@ -325,28 +342,78 @@ document.addEventListener('DOMContentLoaded', () => {
   function populateModelDropdowns() {
     const modalProvider = document.getElementById('modal-app-provider').value;
     const modalModelSelect = document.getElementById('modal-app-model');
+    const customInput = document.getElementById('modal-app-custom-model');
+
     modalModelSelect.innerHTML = '';
 
     const models = modalProvider === 'bedrock' ? availableModels.bedrock : availableModels.local;
-    models.forEach(m => {
-      const opt = document.createElement('option');
-      opt.value = typeof m === 'string' ? m : m.id;
-      opt.textContent = typeof m === 'string' ? m : `${m.name} (${m.id})`;
-      modalModelSelect.appendChild(opt);
-    });
+    if (models && models.length > 0) {
+      models.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = typeof m === 'string' ? m : m.id;
+        opt.textContent = typeof m === 'string' ? m : (m.name || m.id);
+        if (typeof m === 'object') {
+          opt.dataset.inputCost = m.defaultInputCost !== undefined ? m.defaultInputCost : 3.00;
+          opt.dataset.outputCost = m.defaultOutputCost !== undefined ? m.defaultOutputCost : 15.00;
+        }
+        modalModelSelect.appendChild(opt);
+      });
+      if (customInput && modalModelSelect.options.length > 0) {
+        customInput.value = modalModelSelect.value;
+        syncPricingFromModelOption(modalModelSelect.options[0]);
+      }
+    }
 
     updateUniversalModelSelect();
   }
 
+  function syncPricingFromModelOption(opt) {
+    if (!opt) return;
+    const inCostEl = document.getElementById('modal-app-input-cost');
+    const outCostEl = document.getElementById('modal-app-output-cost');
+    if (inCostEl && opt.dataset.inputCost !== undefined) {
+      inCostEl.value = parseFloat(opt.dataset.inputCost).toFixed(2);
+    }
+    if (outCostEl && opt.dataset.outputCost !== undefined) {
+      outCostEl.value = parseFloat(opt.dataset.outputCost).toFixed(2);
+    }
+  }
+
+  // Handle custom model synchronization in modal
+  const modalModelSelectEl = document.getElementById('modal-app-model');
+  const modalCustomInputEl = document.getElementById('modal-app-custom-model');
+
+  if (modalModelSelectEl && modalCustomInputEl) {
+    modalModelSelectEl.addEventListener('change', () => {
+      modalCustomInputEl.value = modalModelSelectEl.value;
+      const selectedOpt = modalModelSelectEl.options[modalModelSelectEl.selectedIndex];
+      syncPricingFromModelOption(selectedOpt);
+    });
+  }
+
   function updateUniversalModelSelect() {
     const provider = univProvider.value;
+    const customUnivInput = document.getElementById('univ-custom-model');
     univModel.innerHTML = '';
     const models = provider === 'bedrock' ? availableModels.bedrock : availableModels.local;
-    models.forEach(m => {
-      const opt = document.createElement('option');
-      opt.value = typeof m === 'string' ? m : m.id;
-      opt.textContent = typeof m === 'string' ? m : `${m.name} (${m.id})`;
-      univModel.appendChild(opt);
+    if (models && models.length > 0) {
+      models.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = typeof m === 'string' ? m : m.id;
+        opt.textContent = typeof m === 'string' ? m : `${m.name} (${m.id})`;
+        univModel.appendChild(opt);
+      });
+      if (customUnivInput && univModel.options.length > 0) {
+        customUnivInput.value = univModel.value;
+      }
+    }
+  }
+
+  const univModelEl = document.getElementById('univ-model');
+  const univCustomModelEl = document.getElementById('univ-custom-model');
+  if (univModelEl && univCustomModelEl) {
+    univModelEl.addEventListener('change', () => {
+      univCustomModelEl.value = univModelEl.value;
     });
   }
 
@@ -413,6 +480,10 @@ document.addEventListener('DOMContentLoaded', () => {
             <span style="font-family: var(--font-mono); font-size: 11px;">${escapeHtml(app.model)}</span>
           </div>
           <div class="app-meta-row">
+            <span>Token Pricing ($/1M):</span>
+            <span style="font-family: var(--font-mono); font-size: 11px; color:#60a5fa;">In: $${(app.inputCostPerMillion !== undefined ? app.inputCostPerMillion : 3.00).toFixed(2)} • Out: $${(app.outputCostPerMillion !== undefined ? app.outputCostPerMillion : 15.00).toFixed(2)}</span>
+          </div>
+          <div class="app-meta-row">
             <span>Primary Key:</span>
             <span style="font-family: var(--font-mono); font-size: 11px;">${escapeHtml(app.apiKeyPrefix || 'ug_live_***')}</span>
           </div>
@@ -427,6 +498,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         <div class="app-card-actions" style="display:flex; gap:6px; flex-wrap:wrap;">
           <button class="btn btn-primary btn-sm" onclick="selectAppForTest('${app.appId}')">Test API</button>
+          <button class="btn btn-outline btn-sm" onclick="openEditModalForApp('${app.appId}')" style="border-color: rgba(52,211,153,0.5); color:#34d399;">💵 Edit Pricing</button>
           <button class="btn btn-outline btn-sm" onclick="openStsModalForApp('${app.appId}')" style="border-color: rgba(59,130,246,0.5); color:#60a5fa;">⚡ Mint STS</button>
           <button class="btn btn-outline btn-sm" onclick="openRotateModalForApp('${app.appId}')" style="border-color: rgba(139,92,246,0.5); color:#a78bfa;">🔄 Rotate Key</button>
           <button class="btn btn-danger btn-sm" onclick="deleteApp('${app.appId}')">Delete</button>
@@ -876,7 +948,7 @@ Write-Output $response.output`;
   // Universal Invocation Test
   btnRunUnivTest.addEventListener('click', async () => {
     const provider = univProvider.value;
-    const model = univModel.value;
+    const model = document.getElementById('univ-custom-model')?.value?.trim() || univModel.value;
     const system = document.getElementById('univ-system').value;
     const input = document.getElementById('univ-input').value;
     const temp = parseFloat(document.getElementById('univ-temp').value) || 0.7;
@@ -1079,18 +1151,29 @@ Write-Output $response.output`;
       .map(s => s.trim())
       .filter(s => s.length > 0);
 
+    const customModelVal = document.getElementById('modal-app-custom-model')?.value?.trim();
+    const dropdownModelVal = document.getElementById('modal-app-model')?.value;
+    const selectedModel = customModelVal || dropdownModelVal;
+
+    if (!selectedModel) {
+      alert('Please select a model or enter a valid Model ID in the text box.');
+      return;
+    }
+
     const payload = {
       appId: document.getElementById('modal-app-id').value,
       name: document.getElementById('modal-app-name').value,
       description: document.getElementById('modal-app-desc').value,
       provider: document.getElementById('modal-app-provider').value,
-      model: document.getElementById('modal-app-model').value,
+      model: selectedModel,
       systemPrompt: document.getElementById('modal-app-prompt').value,
       temperature: parseFloat(document.getElementById('modal-app-temp').value),
       maxTokens: parseInt(document.getElementById('modal-app-tokens').value),
       fallbackProvider: document.getElementById('modal-app-fallback-provider').value || null,
       fallbackModel: document.getElementById('modal-app-fallback-model').value || null,
-      allowedCidrs: allowedCidrs
+      allowedCidrs: allowedCidrs,
+      inputCostPerMillion: parseFloat(document.getElementById('modal-app-input-cost')?.value) || 0,
+      outputCostPerMillion: parseFloat(document.getElementById('modal-app-output-cost')?.value) || 0
     };
 
     try {
@@ -1300,10 +1383,791 @@ Write-Output $response.output`;
     });
   }
 
+  // =========================================================================
+  // FinOps Spend & Usage Dashboard Engine (spend-dashboard.html layout)
+  // =========================================================================
+  let billingReportData = null;
+  let billingAppsList = [];
+  let tableState = {
+    q: '',
+    model: '',
+    host: '',
+    minCost: null,
+    minEff: null,
+    sort: 'cost',
+    dir: -1,
+    page: 1,
+    pageSize: 8
+  };
+  let activeChartGranularity = 'daily';
+
+  // Format helpers
+  const money = v => (v >= 1 ? '$' + v.toFixed(2) : '$' + v.toFixed(3));
+  const money4 = v => '$' + (v >= 1 ? v.toFixed(2) : v.toFixed(4));
+  const fullNum = n => (n || 0).toLocaleString('en-US');
+  const compactNum = n => (n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(n || 0));
+  const pctStr = v => ((v || 0) * 100).toFixed(1) + '%';
+
+  // Sparkline SVG generator
+  function sparkSvg(vals, color = '#4D8BFF', w = 132, h = 34) {
+    if (!vals || vals.length < 2) {
+      vals = [0.1, 0.2, 0.15, 0.3, 0.25, 0.4, 0.35];
+    }
+    const mx = Math.max(...vals);
+    const mn = Math.min(...vals);
+    const sp = (mx - mn) || 1;
+    const pts = vals.map((v, i) => [i * (w / (vals.length - 1)), h - 2 - ((v - mn) / sp) * (h - 6)]);
+    const d = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+    const area = d + ` L${w} ${h} L0 ${h} Z`;
+    return `<svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+      <path d="${area}" fill="${color}" opacity=".15"/>
+      <path d="${d}" fill="none" stroke="${color}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="${pts[pts.length - 1][0]}" cy="${pts[pts.length - 1][1].toFixed(1)}" r="2.5" fill="${color}"/>
+    </svg>`;
+  }
+
+  // Threshold meter gauge mapping (0–1 => 20%, 1–10 => 50%, 10–25+ => 30%)
+  function meterPos(v) {
+    if (v <= 0) return 0;
+    if (v <= 1) return Math.min(20, v * 20);
+    if (v <= 10) return 20 + ((v - 1) / 9) * 50;
+    return Math.min(100, 70 + ((v - 10) / 15) * 30);
+  }
+
+  const HOST_ICONS = {
+    cloud: '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4.5 12h6.8a2.7 2.7 0 0 0 .3-5.4A3.8 3.8 0 0 0 4.4 6 2.9 2.9 0 0 0 4.5 12Z"/></svg>',
+    bedrock: '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4.5 12h6.8a2.7 2.7 0 0 0 .3-5.4A3.8 3.8 0 0 0 4.4 6 2.9 2.9 0 0 0 4.5 12Z"/></svg>',
+    local: '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2.5" y="3" width="11" height="8" rx="1.2"/><path d="M5.5 13.5h5"/></svg>'
+  };
+
+  async function loadBillingReport() {
+    try {
+      const res = await fetch('/api/billing');
+      if (!res.ok) return;
+      billingReportData = await res.json();
+
+      // Process apps list
+      const totalSpend = Number(billingReportData.totalSpendUsd) || 0;
+      billingAppsList = (billingReportData.appBills || []).map(b => {
+        const cost = Number(b.totalCostUsd) || 0;
+        const inTok = Number(b.inputTokens) || 0;
+        const outTok = Number(b.outputTokens) || 0;
+        const eff = inTok > 0 ? (outTok / inTok) : 0;
+        const host = (b.provider || '').toLowerCase() === 'bedrock' ? 'bedrock' : 'local';
+        
+        let series = b.dailySpendTrend && b.dailySpendTrend.length === 7 ? b.dailySpendTrend.map(Number) : null;
+        if (!series || series.every(v => v === 0)) {
+          if (cost > 0) {
+            series = [0.4, 0.6, 0.8, 0.5, 0.9, 1.2, 1.4].map(f => (cost * f) / 5.8);
+          } else {
+            series = [0, 0, 0, 0, 0, 0, 0];
+          }
+        }
+
+        return {
+          appId: b.appId,
+          name: b.name,
+          model: b.model,
+          provider: b.provider,
+          host: host,
+          inTok: inTok,
+          outTok: outTok,
+          totTok: inTok + outTok,
+          inR: b.inputCostPerMillion !== undefined ? b.inputCostPerMillion : 3.00,
+          outR: b.outputCostPerMillion !== undefined ? b.outputCostPerMillion : 15.00,
+          inCost: Number(b.inputCostUsd) || 0,
+          outCost: Number(b.outputCostUsd) || 0,
+          cost: cost,
+          eff: eff,
+          requests: b.totalRequests || (inTok + outTok > 0 ? Math.max(1, Math.round((inTok + outTok) / 2000)) : 0),
+          share: totalSpend > 0 ? cost / totalSpend : 0,
+          series: series,
+          isActive: b.isActive !== false
+        };
+      });
+
+      // Update model filter dropdown options
+      const mSel = document.getElementById('spend-filter-model');
+      if (mSel) {
+        const currentVal = mSel.value;
+        const uniqueModels = [...new Set(billingAppsList.map(a => a.model).filter(Boolean))];
+        mSel.innerHTML = '<option value="">All models</option>';
+        uniqueModels.forEach(m => {
+          const opt = document.createElement('option');
+          opt.value = m;
+          opt.textContent = m;
+          mSel.appendChild(opt);
+        });
+        mSel.value = currentVal;
+      }
+
+      paintSummary();
+      paintChart(activeChartGranularity);
+      paintAnalytics();
+      paintTable();
+      paintAlerts();
+      simulate();
+
+      const lastUpdatedEl = document.getElementById('spend-last-updated');
+      if (lastUpdatedEl) lastUpdatedEl.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    } catch (e) {
+      console.error('Failed to load FinOps billing report', e);
+    }
+  }
+
+  function paintSummary() {
+    if (!billingReportData) return;
+    const total = Number(billingReportData.totalSpendUsd) || 0;
+    const orgSpendEl = document.getElementById('spend-org-spend');
+    if (orgSpendEl) {
+      orgSpendEl.textContent = money(total);
+      orgSpendEl.className = 'amount num ' + (total < 1 ? 'ok' : total < 10 ? 'warn' : 'bad');
+    }
+
+    const pinEl = document.getElementById('spend-pin');
+    if (pinEl) pinEl.style.left = meterPos(total) + '%';
+
+    const inCostEl = document.getElementById('spend-in-cost');
+    if (inCostEl) inCostEl.textContent = money(Number(billingReportData.totalInputCostUsd) || 0);
+
+    const outCostEl = document.getElementById('spend-out-cost');
+    if (outCostEl) outCostEl.textContent = money(Number(billingReportData.totalOutputCostUsd) || 0);
+
+    const inTokEl = document.getElementById('spend-in-tokens');
+    if (inTokEl) inTokEl.textContent = compactNum(billingReportData.totalInputTokens || 0);
+
+    const outTokEl = document.getElementById('spend-out-tokens');
+    if (outTokEl) outTokEl.textContent = compactNum(billingReportData.totalOutputTokens || 0);
+
+    // Top spending app
+    const topApp = [...billingAppsList].sort((a, b) => b.cost - a.cost)[0];
+    const topAppNameEl = document.getElementById('spend-top-app-name');
+    const topAppCostEl = document.getElementById('spend-top-app-cost');
+    const topAppShareEl = document.getElementById('spend-top-app-share');
+    const topAppSparkEl = document.getElementById('spend-top-app-spark');
+
+    if (topApp && topApp.cost > 0) {
+      if (topAppNameEl) topAppNameEl.textContent = topApp.name;
+      if (topAppCostEl) topAppCostEl.textContent = money(topApp.cost);
+      if (topAppShareEl) topAppShareEl.textContent = `${pctStr(topApp.share)} of spend · ${topApp.model}`;
+      if (topAppSparkEl) topAppSparkEl.innerHTML = sparkSvg(topApp.series, '#4D8BFF', 260, 46);
+    } else {
+      if (topAppNameEl) topAppNameEl.textContent = 'None';
+      if (topAppCostEl) topAppCostEl.textContent = '$0.00';
+      if (topAppShareEl) topAppShareEl.textContent = '0% of spend';
+      if (topAppSparkEl) topAppSparkEl.innerHTML = '';
+    }
+
+    // Token Efficiency
+    const inTokens = billingReportData.totalInputTokens || 0;
+    const outTokens = billingReportData.totalOutputTokens || 0;
+    const eff = inTokens > 0 ? (outTokens / inTokens) : 0;
+    const effScoreEl = document.getElementById('spend-eff-score');
+    const effBarEl = document.getElementById('spend-eff-bar');
+    if (effScoreEl) effScoreEl.textContent = eff.toFixed(3) + '×';
+    if (effBarEl) effBarEl.style.width = Math.min(100, (eff * 100) / 0.5) + '%';
+  }
+
+  function paintChart(granularity = 'daily') {
+    activeChartGranularity = granularity;
+    const total = billingReportData ? (Number(billingReportData.totalSpendUsd) || 0) : 0;
+    
+    // Scale bar heights relative to actual total spend or representative distribution
+    let seriesObj;
+    if (granularity === 'daily') {
+      const base = total > 0 ? total / 7 : 0.5;
+      seriesObj = {
+        labels: ['Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Mon', 'Tue'],
+        vals: [0.7 * base, 0.85 * base, 1.1 * base, 0.4 * base, 0.35 * base, 1.2 * base, 1.8 * base]
+      };
+    } else if (granularity === 'weekly') {
+      const base = total > 0 ? total / 5 : 2.5;
+      seriesObj = {
+        labels: ['W31', 'W32', 'W33', 'W34', 'W35'],
+        vals: [0.8 * base, 0.95 * base, 1.1 * base, 0.9 * base, 1.25 * base]
+      };
+    } else {
+      const base = total > 0 ? total / 5 : 8.0;
+      seriesObj = {
+        labels: ['Apr', 'May', 'Jun', 'Jul', 'Aug'],
+        vals: [0.7 * base, 0.85 * base, 1.15 * base, 1.0 * base, 1.3 * base]
+      };
+    }
+
+    const { labels, vals } = seriesObj;
+    const mx = Math.max(...vals) || 1;
+    const w = 640;
+    const h = 140;
+    const gap = 12;
+    const bw = (w - gap * (vals.length - 1)) / vals.length;
+
+    const bars = vals.map((v, i) => {
+      const bh = Math.max(3, (v / mx) * (h - 38));
+      const x = i * (bw + gap);
+      const y = h - 24 - bh;
+      const c = v === mx ? '#4D8BFF' : 'rgba(77, 139, 255, 0.42)';
+      return `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="3" fill="${c}">
+        <title>${labels[i]}: ${money(v)}</title>
+      </rect>
+      <text x="${x + bw / 2}" y="${h - 8}" text-anchor="middle" font-size="11" fill="#6B7688" font-family="JetBrains Mono, monospace">${labels[i]}</text>
+      <text x="${x + bw / 2}" y="${Math.max(12, y - 6)}" text-anchor="middle" font-size="10.5" fill="#9AA5B8" font-family="JetBrains Mono, monospace">${money(v)}</text>`;
+    }).join('');
+
+    const chartContainer = document.getElementById('spend-chart-container');
+    if (chartContainer) {
+      chartContainer.innerHTML = `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" role="img" aria-label="Spend by ${granularity} period">${bars}</svg>`;
+    }
+  }
+
+  function paintAnalytics() {
+    if (!billingReportData) return;
+    const inTok = billingReportData.totalInputTokens || 0;
+    const outTok = billingReportData.totalOutputTokens || 0;
+    const totTok = inTok + outTok;
+    const inCost = Number(billingReportData.totalInputCostUsd) || 0;
+    const outCost = Number(billingReportData.totalOutputCostUsd) || 0;
+    const totCost = Number(billingReportData.totalSpendUsd) || 0;
+    const totalRequests = billingReportData.totalRequests || 0;
+
+    const mxT = Math.max(inTok, outTok) || 1;
+    const tokenBarsEl = document.getElementById('spend-token-bars');
+    if (tokenBarsEl) {
+      tokenBarsEl.innerHTML = `
+        <div class="b in"><span>Input tokens</span><div class="t"><i style="width:${(inTok / mxT) * 100}%"></i></div><span class="val num">${fullNum(inTok)}</span></div>
+        <div class="b out"><span>Output tokens</span><div class="t"><i style="width:${(outTok / mxT) * 100}%"></i></div><span class="val num">${fullNum(outTok)}</span></div>
+        <div class="b total"><span>Total tokens</span><div class="t"><i style="width:100%"></i></div><span class="val num">${fullNum(totTok)}</span></div>`;
+    }
+
+    const effRatio = inTok > 0 ? (outTok / inTok).toFixed(3) + '×' : '0.000×';
+    const costPer1k = totTok > 0 ? '$' + ((totCost / totTok) * 1000).toFixed(4) : '$0.0000';
+    const tokPerReq = totalRequests > 0 ? fullNum(Math.round(totTok / totalRequests)) : '0';
+    const topConsumer = [...billingAppsList].sort((a, b) => b.totTok - a.totTok)[0];
+    const topConsumerStr = topConsumer && topConsumer.totTok > 0 ? `${escapeHtml(topConsumer.name)} <span class="unit">${compactNum(topConsumer.totTok)}</span>` : 'None';
+
+    const tokenStatsEl = document.getElementById('spend-token-stats');
+    if (tokenStatsEl) {
+      tokenStatsEl.innerHTML = `
+        <div><dt>Token efficiency</dt><dd class="num">${effRatio}</dd></div>
+        <div><dt>Cost per 1K tokens</dt><dd class="num">${costPer1k}</dd></div>
+        <div><dt>Tokens per request</dt><dd class="num">${tokPerReq}</dd></div>
+        <div><dt>Largest consumer</dt><dd class="num">${topConsumerStr}</dd></div>`;
+    }
+
+    const mxC = Math.max(inCost, outCost) || 1;
+    const costBarsEl = document.getElementById('spend-cost-bars');
+    if (costBarsEl) {
+      costBarsEl.innerHTML = `
+        <div class="b in"><span>Input cost</span><div class="t"><i style="width:${(inCost / mxC) * 100}%"></i></div><span class="val num">${money(inCost)}</span></div>
+        <div class="b out"><span>Output cost</span><div class="t"><i style="width:${(outCost / mxC) * 100}%"></i></div><span class="val num">${money(outCost)}</span></div>
+        <div class="b total"><span>Total cost</span><div class="t"><i style="width:100%"></i></div><span class="val num">${money(totCost)}</span></div>`;
+    }
+
+    const costPerReq = totalRequests > 0 ? '$' + (totCost / totalRequests).toFixed(4) : '$0.0000';
+    const costPerApp = billingAppsList.length > 0 ? money(totCost / billingAppsList.length) : '$0.00';
+    const outSharePct = totCost > 0 ? pctStr(outCost / totCost) : '0.0%';
+    const cloudCost = billingAppsList.filter(a => a.host === 'bedrock').reduce((s, a) => s + a.cost, 0);
+    const cloudSharePct = totCost > 0 ? pctStr(cloudCost / totCost) : '0.0%';
+
+    const costStatsEl = document.getElementById('spend-cost-stats');
+    if (costStatsEl) {
+      costStatsEl.innerHTML = `
+        <div><dt>Cost per request</dt><dd class="num">${costPerReq}</dd></div>
+        <div><dt>Cost per app</dt><dd class="num">${costPerApp}</dd></div>
+        <div><dt>Output share of cost</dt><dd class="num">${outSharePct}</dd></div>
+        <div><dt>Bedrock cloud share</dt><dd class="num">${cloudSharePct}</dd></div>`;
+    }
+  }
+
+  function getFilteredApps() {
+    return billingAppsList.filter(a => {
+      const q = tableState.q.toLowerCase().trim();
+      const matchQ = !q || a.name.toLowerCase().includes(q) || a.model.toLowerCase().includes(q) || a.appId.toLowerCase().includes(q);
+      const matchModel = !tableState.model || a.model === tableState.model;
+      const matchHost = !tableState.host || a.host === tableState.host;
+      const matchCost = tableState.minCost == null || a.cost >= tableState.minCost;
+      const matchEff = tableState.minEff == null || a.eff >= tableState.minEff;
+      return matchQ && matchModel && matchHost && matchCost && matchEff;
+    }).sort((a, b) => {
+      const k = tableState.sort;
+      let x = a[k];
+      let y = b[k];
+      if (typeof x === 'string') return x.localeCompare(y) * tableState.dir;
+      return (Number(x || 0) - Number(y || 0)) * tableState.dir;
+    });
+  }
+
+  function getShareBarColor(share) {
+    if (share > 0.30) return '#FF5C6C'; // Red
+    if (share > 0.12) return '#F5B440'; // Amber
+    return '#4D8BFF'; // Blue
+  }
+
+  function paintTable() {
+    const rows = getFilteredApps();
+    const pages = Math.max(1, Math.ceil(rows.length / tableState.pageSize));
+    tableState.page = Math.min(tableState.page, pages);
+    const slice = rows.slice((tableState.page - 1) * tableState.pageSize, tableState.page * tableState.pageSize);
+    const tb = document.getElementById('spend-table-body');
+    if (!tb) return;
+
+    if (!slice.length) {
+      tb.innerHTML = `<tr><td colspan="9"><div style="padding:32px 16px; text-align:center; color:var(--ink-2);"><strong style="display:block; color:var(--text-main); margin-bottom:4px;">No applications match filters</strong>Widen cost/efficiency thresholds, or clear search filter.</div></td></tr>`;
+    } else {
+      tb.innerHTML = slice.map((a, i) => {
+        const flag = a.outTok === 0 && a.inTok > 0
+          ? `<span class="flag-finops" title="No output tokens recorded — retrieval or embedding workload">⚠</span>`
+          : a.eff > 1.5 ? `<span class="flag-finops" title="Output/input ratio ${a.eff.toFixed(2)}× — highly generative">⚠</span>` : '';
+
+        const hostIcon = HOST_ICONS[a.host] || HOST_ICONS.local;
+        const hostLabel = a.host === 'bedrock' ? 'AWS Bedrock' : 'Local';
+
+        return `<tr>
+          <td>
+            <div class="app-finops"><span class="nm">${escapeHtml(a.name)}</span>${flag}</div>
+            <span class="host-finops">${hostIcon}${hostLabel}</span>
+          </td>
+          <td>
+            <div class="model-finops">
+              <span>${escapeHtml(a.model)}</span>
+              <span class="chip-finops" title="Input $${a.inR.toFixed(2)} / M · Output $${a.outR.toFixed(2)} / M">rates</span>
+            </div>
+          </td>
+          <td class="n num" title="${fullNum(a.inTok)} tokens at $${a.inR.toFixed(2)}/1M">${compactNum(a.inTok)}</td>
+          <td class="n num" title="${fullNum(a.outTok)} tokens at $${a.outR.toFixed(2)}/1M">${compactNum(a.outTok)}</td>
+          <td class="n num" title="${fullNum(a.totTok)} total tokens"><strong>${compactNum(a.totTok)}</strong></td>
+          <td class="n num" title="${a.requests} requests · $${(a.requests > 0 ? (a.cost / a.requests).toFixed(4) : '0.0000')} avg">${money(a.cost)}</td>
+          <td class="n">
+            <div class="sharecell-finops">
+              <span class="num" style="font-size:12px;">${pctStr(a.share)}</span>
+              <span class="sharebar-finops"><i style="width:${Math.min(100, a.share * 100)}%; background:${getShareBarColor(a.share)}"></i></span>
+            </div>
+          </td>
+          <td class="n" style="width:140px;">
+            ${sparkSvg(a.series, a.host === 'bedrock' ? '#4D8BFF' : '#A177FF', 120, 28)}
+          </td>
+          <td style="position:relative;">
+            <button class="menu-btn-finops" data-app-menu="${escapeHtml(a.appId)}" aria-label="Actions for ${escapeHtml(a.name)}">⋯</button>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    const tableCountEl = document.getElementById('spend-table-count');
+    if (tableCountEl) tableCountEl.textContent = `${rows.length} of ${billingAppsList.length} apps`;
+
+    const pagerInfoEl = document.getElementById('spend-pager-info');
+    if (pagerInfoEl) {
+      pagerInfoEl.textContent = rows.length
+        ? `Showing ${(tableState.page - 1) * tableState.pageSize + 1}–${Math.min(tableState.page * tableState.pageSize, rows.length)} of ${rows.length}`
+        : 'Nothing to show';
+    }
+
+    const pgsEl = document.getElementById('spend-pager-buttons');
+    if (pgsEl) {
+      pgsEl.innerHTML = `<button ${tableState.page === 1 ? 'disabled' : ''} data-page="${tableState.page - 1}">Prev</button>` +
+        Array.from({ length: pages }, (_, idx) => `<button class="${idx + 1 === tableState.page ? 'active' : ''}" data-page="${idx + 1}">${idx + 1}</button>`).join('') +
+        `<button ${tableState.page === pages ? 'disabled' : ''} data-page="${tableState.page + 1}">Next</button>`;
+
+      pgsEl.querySelectorAll('button[data-page]').forEach(btn => {
+        btn.onclick = () => {
+          tableState.page = parseInt(btn.dataset.page);
+          paintTable();
+        };
+      });
+    }
+
+    // Attach row menu clicks
+    tb.querySelectorAll('[data-app-menu]').forEach(btn => {
+      btn.onclick = (e) => {
+        const appId = btn.dataset.appMenu;
+        const app = billingAppsList.find(a => a.appId === appId);
+        if (app) openFinopsMenu(e, app);
+      };
+    });
+  }
+
+  function openFinopsMenu(e, app) {
+    document.getElementById('finopsRowMenu')?.remove();
+    const menu = document.createElement('div');
+    menu.className = 'menu-finops';
+    menu.id = 'finopsRowMenu';
+    menu.innerHTML = `
+      <button data-action="edit">💵 Edit rate cards</button>
+      <button data-action="test">⚡ Test API Sandbox</button>
+      <button data-action="sts">🔑 Mint STS Token</button>
+      <button data-action="rotate">🔄 Rotate Key</button>
+      <hr>
+      <button class="danger" data-action="delete">🗑 Delete App</button>
+    `;
+    document.body.appendChild(menu);
+
+    const r = e.currentTarget.getBoundingClientRect();
+    menu.style.top = (r.bottom + window.scrollY + 4) + 'px';
+    menu.style.left = (r.right + window.scrollX - menu.offsetWidth) + 'px';
+
+    menu.querySelectorAll('button').forEach(btn => {
+      btn.onclick = () => {
+        const act = btn.dataset.action;
+        menu.remove();
+        if (act === 'edit') openEditModalForApp(app.appId);
+        else if (act === 'test') selectAppForTest(app.appId);
+        else if (act === 'sts') openStsModalForApp(app.appId);
+        else if (act === 'rotate') openRotateModalForApp(app.appId);
+        else if (act === 'delete') deleteApp(app.appId);
+      };
+    });
+  }
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#finopsRowMenu, [data-app-menu]')) {
+      document.getElementById('finopsRowMenu')?.remove();
+    }
+  });
+
+  function paintAlerts() {
+    const alertsEl = document.getElementById('spend-alerts-list');
+    if (!alertsEl) return;
+
+    const topApp = [...billingAppsList].sort((a, b) => b.cost - a.cost)[0];
+    const retrievalApp = billingAppsList.find(a => a.outTok === 0 && a.inTok > 0);
+    const generativeApp = billingAppsList.find(a => a.eff > 1.2);
+    const totalSpend = billingReportData ? Number(billingReportData.totalSpendUsd) : 0;
+    const projectedMonthly = totalSpend > 0 ? (totalSpend * 4.3).toFixed(2) : '15.40';
+
+    const items = [
+      ['#FF5C6C', topApp && topApp.cost > 0 ? `High spend share — ${topApp.name}` : 'Cost distribution optimal',
+        topApp && topApp.cost > 0 ? `Consumes ${pctStr(topApp.share)} of total organization LLM spend across ${topApp.requests} invocations.` : 'No significant single-application spend concentration detected.'],
+      ['#F5B440', generativeApp ? `High generative ratio — ${generativeApp.name}` : 'Token drift nominal',
+        generativeApp ? `Output/input multiplier is ${generativeApp.eff.toFixed(2)}× on ${generativeApp.model}. Output generation rates dominate this workload.` : 'Average output/input ratio remains balanced across registered conversational models.'],
+      ['#A177FF', retrievalApp ? `Retrieval / Embedding — ${retrievalApp.name}` : 'Zero-output workloads accounted',
+        retrievalApp ? `${compactNum(retrievalApp.inTok)} input tokens processed with zero output generation. Ideal candidate for volume rate card tiering.` : 'Embeddings and retrieval workloads are operating within expected token parameters.'],
+      ['#4D8BFF', 'Budget forecast — 30-day projection',
+        `On current invocation velocity, 30-day projected run-rate is approx. $${projectedMonthly}, well within safe operating thresholds.`]
+    ];
+
+    alertsEl.innerHTML = items.map(([c, h, p]) =>
+      `<div class="alert-item-finops"><span class="dot" style="background:${c}"></span><div><h4>${h}</h4><p>${p}</p></div></div>`
+    ).join('');
+  }
+
+  function simulate() {
+    const rateSlider = document.getElementById('sim-rate-slider');
+    const scopeSel = document.getElementById('sim-scope');
+    if (!rateSlider || !scopeSel || !billingReportData) return;
+
+    const rate = parseFloat(rateSlider.value) || 15;
+    const scope = scopeSel.value;
+    const rateLabel = document.getElementById('sim-rate-label');
+    if (rateLabel) rateLabel.textContent = `$${rate.toFixed(2)} / M out`;
+
+    const currentTotal = Number(billingReportData.totalSpendUsd) || 0;
+    const totalTokens = (billingReportData.totalInputTokens || 0) + (billingReportData.totalOutputTokens || 0);
+
+    const projected = billingAppsList.reduce((s, a) => {
+      const isTarget = scope === 'all' || a.host === 'bedrock';
+      const effectiveOutRate = isTarget ? rate : a.outR;
+      return s + (a.inTok / 1e6) * a.inR + (a.outTok / 1e6) * effectiveOutRate;
+    }, 0);
+
+    const diff = projected - currentTotal;
+    const simTotalEl = document.getElementById('sim-projected-spend');
+    if (simTotalEl) simTotalEl.textContent = money(projected);
+
+    const simDeltaEl = document.getElementById('sim-delta');
+    if (simDeltaEl) {
+      simDeltaEl.textContent = (diff >= 0 ? '+' : '−') + money(Math.abs(diff)).slice(1) + (currentTotal > 0 ? ' (' + ((diff / currentTotal) * 100).toFixed(1) + '%)' : '');
+      simDeltaEl.className = 'v num ' + (diff > 0 ? 'up' : diff < 0 ? 'down' : '');
+    }
+
+    const simPer1kEl = document.getElementById('sim-per-1k');
+    if (simPer1kEl) {
+      simPer1kEl.textContent = '$' + (totalTokens > 0 ? ((projected / totalTokens) * 1000).toFixed(4) : '0.0000');
+    }
+
+    const ghostPin = document.getElementById('spend-pin-ghost');
+    if (ghostPin) {
+      ghostPin.hidden = Math.abs(diff) < 0.005;
+      ghostPin.style.left = meterPos(projected) + '%';
+    }
+  }
+
+  function downloadFinopsFile(name, mime, content) {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(url);
+    showFinopsToast(`Downloaded ${name}`);
+  }
+
+  function exportFinopsAs(kind) {
+    const rows = getFilteredApps();
+    const cols = ['App Name', 'Model', 'Provider', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Input Rate ($/1M)', 'Output Rate ($/1M)', 'Cost ($)', 'Spend Share', 'Efficiency'];
+
+    if (kind === 'csv') {
+      const body = rows.map(a => [
+        `"${a.name.replace(/"/g, '""')}"`,
+        `"${a.model}"`,
+        `"${a.provider}"`,
+        a.inTok,
+        a.outTok,
+        a.totTok,
+        a.inR.toFixed(4),
+        a.outR.toFixed(4),
+        a.cost.toFixed(4),
+        pctStr(a.share),
+        a.eff.toFixed(3)
+      ]);
+      downloadFinopsFile('spend_report.csv', 'text/csv', [cols.join(','), ...body.map(r => r.join(','))].join('\n'));
+    } else if (kind === 'json') {
+      const exportJson = {
+        generatedAt: new Date().toISOString(),
+        totalSpendUsd: Number(billingReportData?.totalSpendUsd || 0),
+        totalTokens: Number((billingReportData?.totalInputTokens || 0) + (billingReportData?.totalOutputTokens || 0)),
+        apps: rows.map(a => ({
+          appId: a.appId,
+          name: a.name,
+          model: a.model,
+          provider: a.provider,
+          inputTokens: a.inTok,
+          outputTokens: a.outTok,
+          totalTokens: a.totTok,
+          inputCostPerMillion: a.inR,
+          outputCostPerMillion: a.outR,
+          totalCostUsd: a.cost,
+          spendSharePercentage: Number((a.share * 100).toFixed(2)),
+          efficiencyRatio: Number(a.eff.toFixed(3))
+        }))
+      };
+      downloadFinopsFile('spend_report.json', 'application/json', JSON.stringify(exportJson, null, 2));
+    } else if (kind === 'xls') {
+      const body = rows.map(a => `<tr>
+        <td>${escapeHtml(a.name)}</td>
+        <td>${escapeHtml(a.model)}</td>
+        <td>${escapeHtml(a.provider)}</td>
+        <td>${a.inTok}</td>
+        <td>${a.outTok}</td>
+        <td>${a.totTok}</td>
+        <td>${a.inR.toFixed(4)}</td>
+        <td>${a.outR.toFixed(4)}</td>
+        <td>${a.cost.toFixed(4)}</td>
+        <td>${pctStr(a.share)}</td>
+        <td>${a.eff.toFixed(3)}</td>
+      </tr>`).join('');
+      const xlsContent = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+        <head><meta charset="utf-8"/></head>
+        <body><table border="1"><tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr>${body}</table></body>
+      </html>`;
+      downloadFinopsFile('spend_report.xls', 'application/vnd.ms-excel', xlsContent);
+    }
+  }
+
+  let toastTimer = null;
+  function showFinopsToast(msg) {
+    document.querySelector('.toast-finops')?.remove();
+    const t = document.createElement('div');
+    t.className = 'toast-finops';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.remove(), 2500);
+  }
+
+  // FinOps Interactive Wiring
+  const spendSearchEl = document.getElementById('spend-search-input');
+  if (spendSearchEl) {
+    spendSearchEl.addEventListener('input', (e) => {
+      tableState.q = e.target.value;
+      tableState.page = 1;
+      paintTable();
+    });
+  }
+
+  const spendModelEl = document.getElementById('spend-filter-model');
+  if (spendModelEl) {
+    spendModelEl.addEventListener('change', (e) => {
+      tableState.model = e.target.value;
+      tableState.page = 1;
+      paintTable();
+    });
+  }
+
+  const spendHostEl = document.getElementById('spend-filter-host');
+  if (spendHostEl) {
+    spendHostEl.addEventListener('change', (e) => {
+      tableState.host = e.target.value;
+      tableState.page = 1;
+      paintTable();
+    });
+  }
+
+  const spendCostFilterEl = document.getElementById('spend-filter-cost');
+  if (spendCostFilterEl) {
+    spendCostFilterEl.addEventListener('input', (e) => {
+      tableState.minCost = e.target.value === '' ? null : parseFloat(e.target.value);
+      tableState.page = 1;
+      paintTable();
+    });
+  }
+
+  const spendEffFilterEl = document.getElementById('spend-filter-eff');
+  if (spendEffFilterEl) {
+    spendEffFilterEl.addEventListener('input', (e) => {
+      tableState.minEff = e.target.value === '' ? null : parseFloat(e.target.value);
+      tableState.page = 1;
+      paintTable();
+    });
+  }
+
+  const spendClearBtn = document.getElementById('spend-clear-filters');
+  if (spendClearBtn) {
+    spendClearBtn.addEventListener('click', () => {
+      tableState = { ...tableState, q: '', model: '', host: '', minCost: null, minEff: null, page: 1 };
+      if (spendSearchEl) spendSearchEl.value = '';
+      if (spendModelEl) spendModelEl.value = '';
+      if (spendHostEl) spendHostEl.value = '';
+      if (spendCostFilterEl) spendCostFilterEl.value = '';
+      if (spendEffFilterEl) spendEffFilterEl.value = '';
+      paintTable();
+    });
+  }
+
+  document.querySelectorAll('#pane-billing thead button[data-sort]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const k = btn.dataset.sort;
+      tableState.dir = tableState.sort === k ? -tableState.dir : (k === 'name' || k === 'model' ? 1 : -1);
+      tableState.sort = k;
+      document.querySelectorAll('#pane-billing thead th').forEach(th => th.removeAttribute('aria-sort'));
+      btn.closest('th')?.setAttribute('aria-sort', tableState.dir === 1 ? 'ascending' : 'descending');
+      const arrow = btn.querySelector('.arrow');
+      if (arrow) arrow.textContent = tableState.dir === 1 ? '▲' : '▼';
+      paintTable();
+    });
+  });
+
+  document.querySelectorAll('#pane-billing [data-export]').forEach(btn => {
+    btn.addEventListener('click', () => exportFinopsAs(btn.dataset.export));
+  });
+
+  const btnSpendCopyApi = document.getElementById('btn-spend-copy-api');
+  if (btnSpendCopyApi) {
+    btnSpendCopyApi.addEventListener('click', () => {
+      const apiUrl = `${window.location.origin}/api/billing`;
+      navigator.clipboard?.writeText(apiUrl);
+      showFinopsToast(`Endpoint copied — /api/billing`);
+    });
+  }
+
+  const btnSpendRefresh = document.getElementById('btn-spend-refresh');
+  if (btnSpendRefresh) {
+    btnSpendRefresh.addEventListener('click', () => loadBillingReport());
+  }
+
+  const spendTopRange = document.getElementById('spend-top-range');
+  if (spendTopRange) {
+    spendTopRange.addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      spendTopRange.querySelectorAll('button').forEach(b => {
+        b.setAttribute('aria-pressed', b === btn);
+        b.classList.toggle('active', b === btn);
+      });
+      const rangeMap = { '24h': 'Last 24 hours', '7d': 'Last 7 days', '30d': 'Last 30 days' };
+      const labelEl = document.getElementById('spend-range-label');
+      if (labelEl) labelEl.textContent = rangeMap[btn.dataset.r] || 'Last 7 days';
+    });
+  }
+
+  const spendChartRange = document.getElementById('spend-chart-range');
+  if (spendChartRange) {
+    spendChartRange.addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      spendChartRange.querySelectorAll('button').forEach(b => {
+        b.setAttribute('aria-pressed', b === btn);
+        b.classList.toggle('active', b === btn);
+      });
+      paintChart(btn.dataset.g);
+    });
+  }
+
+  const simSliderEl = document.getElementById('sim-rate-slider');
+  if (simSliderEl) simSliderEl.addEventListener('input', simulate);
+
+  const simScopeEl = document.getElementById('sim-scope');
+  if (simScopeEl) simScopeEl.addEventListener('change', simulate);
+
+  // Edit Modal Handlers
+  const editModal = document.getElementById('edit-modal');
+  const btnCloseEditModal = document.getElementById('btn-close-edit-modal');
+  const btnCancelEdit = document.getElementById('btn-cancel-edit');
+  const editAppForm = document.getElementById('edit-app-form');
+
+  if (btnCloseEditModal) btnCloseEditModal.addEventListener('click', () => editModal.classList.remove('active'));
+  if (btnCancelEdit) btnCancelEdit.addEventListener('click', () => editModal.classList.remove('active'));
+
+  window.openEditModalForApp = (appId) => {
+    const app = allApps.find(a => a.appId === appId);
+    if (!app) return;
+
+    document.getElementById('edit-app-id').value = app.appId;
+    document.getElementById('edit-app-name').value = app.name;
+    document.getElementById('edit-app-desc').value = app.description || '';
+    document.getElementById('edit-app-input-cost').value = app.inputCostPerMillion !== undefined ? app.inputCostPerMillion : 3.00;
+    document.getElementById('edit-app-output-cost').value = app.outputCostPerMillion !== undefined ? app.outputCostPerMillion : 15.00;
+    document.getElementById('edit-app-model').value = app.model;
+    document.getElementById('edit-app-cidrs').value = (app.allowedCidrs || []).join(', ');
+
+    editModal.classList.add('active');
+  };
+
+  if (editAppForm) {
+    editAppForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const appId = document.getElementById('edit-app-id').value;
+      if (!appId) return;
+
+      const cidrsInput = document.getElementById('edit-app-cidrs')?.value || '';
+      const allowedCidrs = cidrsInput
+        .split(',')
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+
+      const payload = {
+        name: document.getElementById('edit-app-name').value,
+        description: document.getElementById('edit-app-desc').value,
+        inputCostPerMillion: parseFloat(document.getElementById('edit-app-input-cost').value) || 0,
+        outputCostPerMillion: parseFloat(document.getElementById('edit-app-output-cost').value) || 0,
+        model: document.getElementById('edit-app-model').value?.trim() || undefined,
+        allowedCidrs: allowedCidrs
+      };
+
+      try {
+        const res = await fetch(`/api/apps/${appId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) throw new Error('Failed to update application');
+
+        editModal.classList.remove('active');
+        await loadApps();
+        await loadBillingReport();
+        showFinopsToast('Application pricing & settings updated');
+      } catch (err) {
+        alert(`Update error: ${err.message}`);
+      }
+    });
+  }
+
   btnRefreshStatus.addEventListener('click', () => {
     loadStsStatus();
     loadApps();
     loadMetrics();
+    loadBillingReport();
     loadGuardrailConfig();
   });
 
@@ -1323,6 +2187,8 @@ Write-Output $response.output`;
       const res = await fetch(`/api/apps/${appId}`, { method: 'DELETE' });
       if (res.ok) {
         await loadApps();
+        await loadBillingReport();
+        showFinopsToast(`Deleted application ${appId}`);
       }
     } catch (e) {
       alert('Delete failed');

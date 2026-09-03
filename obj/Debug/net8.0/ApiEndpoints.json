@@ -256,7 +256,7 @@
   },
   {
     "ContainingType": "UnifiedGateway.Endpoints.DashboardEndpoints\u002B\u003C\u003Ec",
-    "Method": "\u003CMapDashboardEndpoints\u003Eb__0_11",
+    "Method": "\u003CMapDashboardEndpoints\u003Eb__0_13",
     "RelativePath": "api/audit/export",
     "HttpMethod": "GET",
     "IsController": false,
@@ -298,7 +298,7 @@
   },
   {
     "ContainingType": "UnifiedGateway.Endpoints.DashboardEndpoints\u002B\u003C\u003Ec",
-    "Method": "\u003CMapDashboardEndpoints\u003Eb__0_10",
+    "Method": "\u003CMapDashboardEndpoints\u003Eb__0_12",
     "RelativePath": "api/audit/logs",
     "HttpMethod": "GET",
     "IsController": false,
@@ -350,7 +350,49 @@
   },
   {
     "ContainingType": "UnifiedGateway.Endpoints.DashboardEndpoints\u002B\u003C\u003Ec",
-    "Method": "\u003CMapDashboardEndpoints\u003Eb__0_13",
+    "Method": "\u003CMapDashboardEndpoints\u003Eb__0_14",
+    "RelativePath": "api/billing",
+    "HttpMethod": "GET",
+    "IsController": false,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": [
+      {
+        "Type": "System.Void",
+        "MediaTypes": [],
+        "StatusCode": 200
+      }
+    ],
+    "Tags": [
+      "Dashboard \u0026 Management"
+    ],
+    "EndpointName": "GetBillingSummary",
+    "Summary": "Get organization-wide financial summary and per-application token billing breakdown"
+  },
+  {
+    "ContainingType": "UnifiedGateway.Endpoints.DashboardEndpoints\u002B\u003C\u003Ec",
+    "Method": "\u003CMapDashboardEndpoints\u003Eb__0_15",
+    "RelativePath": "api/billing/export",
+    "HttpMethod": "GET",
+    "IsController": false,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": [
+      {
+        "Type": "System.Void",
+        "MediaTypes": [],
+        "StatusCode": 200
+      }
+    ],
+    "Tags": [
+      "Dashboard \u0026 Management"
+    ],
+    "EndpointName": "ExportBillingCsv",
+    "Summary": "Export application billing and token cost report as CSV spreadsheet"
+  },
+  {
+    "ContainingType": "UnifiedGateway.Endpoints.DashboardEndpoints\u002B\u003C\u003Ec",
+    "Method": "\u003CMapDashboardEndpoints\u003Eb__0_17",
     "RelativePath": "api/credentials/status",
     "HttpMethod": "GET",
     "IsController": false,
@@ -370,7 +412,7 @@
   },
   {
     "ContainingType": "UnifiedGateway.Endpoints.DashboardEndpoints\u002B\u003C\u003Ec",
-    "Method": "\u003CMapDashboardEndpoints\u003Eb__0_14",
+    "Method": "\u003CMapDashboardEndpoints\u003Eb__0_18",
     "RelativePath": "api/guardrails/config",
     "HttpMethod": "GET",
     "IsController": false,
@@ -391,7 +433,7 @@
   },
   {
     "ContainingType": "UnifiedGateway.Endpoints.DashboardEndpoints\u002B\u003C\u003Ec",
-    "Method": "\u003CMapDashboardEndpoints\u003Eb__0_15",
+    "Method": "\u003CMapDashboardEndpoints\u003Eb__0_19",
     "RelativePath": "api/guardrails/config",
     "HttpMethod": "PUT",
     "IsController": false,
@@ -418,7 +460,7 @@
   },
   {
     "ContainingType": "UnifiedGateway.Endpoints.DashboardEndpoints\u002B\u003C\u003Ec",
-    "Method": "\u003CMapDashboardEndpoints\u003Eb__0_16",
+    "Method": "\u003CMapDashboardEndpoints\u003Eb__0_20",
     "RelativePath": "api/guardrails/test",
     "HttpMethod": "POST",
     "IsController": false,
@@ -445,7 +487,7 @@
   },
   {
     "ContainingType": "UnifiedGateway.Endpoints.DashboardEndpoints\u002B\u003C\u003Ec",
-    "Method": "\u003CMapDashboardEndpoints\u003Eb__0_17",
+    "Method": "\u003CMapDashboardEndpoints\u003Eb__0_21",
     "RelativePath": "api/guardrails/test-output",
     "HttpMethod": "POST",
     "IsController": false,
@@ -472,7 +514,7 @@
   },
   {
     "ContainingType": "UnifiedGateway.Endpoints.DashboardEndpoints\u002B\u003C\u003Ec",
-    "Method": "\u003CMapDashboardEndpoints\u003Eb__0_9",
+    "Method": "\u003CMapDashboardEndpoints\u003Eb__0_10",
     "RelativePath": "api/metrics",
     "HttpMethod": "GET",
     "IsController": false,
@@ -492,7 +534,27 @@
   },
   {
     "ContainingType": "UnifiedGateway.Endpoints.DashboardEndpoints\u002B\u003C\u003Ec",
-    "Method": "\u003CMapDashboardEndpoints\u003Eb__0_12",
+    "Method": "\u003CMapDashboardEndpoints\u003Eb__0_11",
+    "RelativePath": "api/metrics/prometheus",
+    "HttpMethod": "GET",
+    "IsController": false,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": [
+      {
+        "Type": "System.Void",
+        "MediaTypes": [],
+        "StatusCode": 200
+      }
+    ],
+    "Tags": [
+      "Dashboard \u0026 Management"
+    ],
+    "EndpointName": "GetPrometheusMetricsText"
+  },
+  {
+    "ContainingType": "UnifiedGateway.Endpoints.DashboardEndpoints\u002B\u003C\u003Ec",
+    "Method": "\u003CMapDashboardEndpoints\u003Eb__0_16",
     "RelativePath": "api/models",
     "HttpMethod": "GET",
     "IsController": false,
@@ -740,6 +802,27 @@
     ],
     "EndpointName": "InvokeUniversal",
     "Summary": "Direct universal schema invocation with specified model and provider"
+  },
+  {
+    "ContainingType": "UnifiedGateway.Endpoints.DashboardEndpoints\u002B\u003C\u003Ec",
+    "Method": "\u003CMapDashboardEndpoints\u003Eb__0_9",
+    "RelativePath": "metrics",
+    "HttpMethod": "GET",
+    "IsController": false,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": [
+      {
+        "Type": "System.Void",
+        "MediaTypes": [],
+        "StatusCode": 200
+      }
+    ],
+    "Tags": [
+      "Observability \u0026 Prometheus"
+    ],
+    "EndpointName": "PrometheusMetrics",
+    "Summary": "Standard Prometheus text exposition scrape endpoint (version 0.0.4)"
   },
   {
     "ContainingType": "Program\u002B\u003C\u003Ec",

@@ -11,6 +11,7 @@ public class ModelRouter : IModelRouter
     private readonly IApplicationRegistryService _registryService;
     private readonly IGuardrailService _guardrailService;
     private readonly IAuditLogService _auditLogService;
+    private readonly IPrometheusMetricsService _prometheusMetrics;
     private readonly GatewayOptions _options;
     private readonly ILogger<ModelRouter> _logger;
 
@@ -20,6 +21,7 @@ public class ModelRouter : IModelRouter
         IApplicationRegistryService registryService,
         IGuardrailService guardrailService,
         IAuditLogService auditLogService,
+        IPrometheusMetricsService prometheusMetrics,
         IOptions<GatewayOptions> options,
         ILogger<ModelRouter> logger)
     {
@@ -28,6 +30,7 @@ public class ModelRouter : IModelRouter
         _registryService = registryService;
         _guardrailService = guardrailService;
         _auditLogService = auditLogService;
+        _prometheusMetrics = prometheusMetrics;
         _options = options.Value;
         _logger = logger;
     }
@@ -404,6 +407,40 @@ public class ModelRouter : IModelRouter
             };
 
             _auditLogService.LogRequest(auditRecord);
+
+            // 3. Prometheus Metrics Recording
+            if (_options.Observability.EnablePrometheus)
+            {
+                var appId = req.Metadata?.AppId ?? "direct";
+                _prometheusMetrics.RecordRequest(
+                    appId,
+                    res.Model,
+                    res.Provider,
+                    auditRecord.StatusCode,
+                    res.LatencyMs / 1000.0);
+
+                _prometheusMetrics.RecordTokens(
+                    appId,
+                    res.Model,
+                    res.Tokens.Input,
+                    res.Tokens.Output);
+
+                if (inputGuardrail.Violations.Count > 0)
+                {
+                    foreach (var v in inputGuardrail.Violations)
+                    {
+                        _prometheusMetrics.RecordGuardrailViolation(v.Category, inputGuardrail.ActionTaken, v.Severity);
+                    }
+                }
+
+                if (outputGuardrail != null && outputGuardrail.Violations.Count > 0)
+                {
+                    foreach (var v in outputGuardrail.Violations)
+                    {
+                        _prometheusMetrics.RecordGuardrailViolation(v.Category, outputGuardrail.ActionTaken, v.Severity);
+                    }
+                }
+            }
         }
         catch (Exception ex)
         {

@@ -85,6 +85,8 @@ public class ApplicationRegistryService : IApplicationRegistryService
             MaxTokens = 1500,
             FallbackProvider = "local",
             FallbackModel = "ollama/llama3",
+            InputCostPerMillion = 3.00,
+            OutputCostPerMillion = 15.00,
             Version = 1,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
@@ -105,6 +107,8 @@ public class ApplicationRegistryService : IApplicationRegistryService
             MaxTokens = 3000,
             FallbackProvider = "local",
             FallbackModel = "ollama/llama3",
+            InputCostPerMillion = 3.00,
+            OutputCostPerMillion = 15.00,
             Version = 1,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
@@ -125,6 +129,8 @@ public class ApplicationRegistryService : IApplicationRegistryService
             MaxTokens = 2048,
             FallbackProvider = "local",
             FallbackModel = "lmstudio/local-model",
+            InputCostPerMillion = 0.00,
+            OutputCostPerMillion = 0.00,
             Version = 1,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow
@@ -177,6 +183,8 @@ public class ApplicationRegistryService : IApplicationRegistryService
             FallbackProvider = request.FallbackProvider,
             FallbackModel = request.FallbackModel,
             AllowedCidrs = request.AllowedCidrs ?? [],
+            InputCostPerMillion = request.InputCostPerMillion,
+            OutputCostPerMillion = request.OutputCostPerMillion,
             Version = 1,
             IsActive = true,
             CreatedAt = DateTimeOffset.UtcNow,
@@ -217,6 +225,8 @@ public class ApplicationRegistryService : IApplicationRegistryService
             Temperature = existing.Temperature,
             MaxTokens = existing.MaxTokens,
             AllowedCidrs = existing.AllowedCidrs,
+            InputCostPerMillion = existing.InputCostPerMillion,
+            OutputCostPerMillion = existing.OutputCostPerMillion,
             SavedAt = existing.UpdatedAt
         };
 
@@ -234,6 +244,8 @@ public class ApplicationRegistryService : IApplicationRegistryService
             FallbackProvider = request.FallbackProvider ?? existing.FallbackProvider,
             FallbackModel = request.FallbackModel ?? existing.FallbackModel,
             AllowedCidrs = request.AllowedCidrs ?? existing.AllowedCidrs,
+            InputCostPerMillion = request.InputCostPerMillion ?? existing.InputCostPerMillion,
+            OutputCostPerMillion = request.OutputCostPerMillion ?? existing.OutputCostPerMillion,
             IsActive = request.IsActive ?? existing.IsActive,
             Version = existing.Version + 1,
             UpdatedAt = DateTimeOffset.UtcNow,
@@ -625,6 +637,122 @@ public class ApplicationRegistryService : IApplicationRegistryService
         };
 
         return Task.FromResult(summary);
+    }
+
+    public Task<OrganizationBillingReport> GetBillingSummaryAsync(CancellationToken cancellationToken = default)
+    {
+        var logs = _recentLogs.ToArray();
+        var apps = _apps.Values.ToList();
+        var appBills = new List<AppBillingSummary>();
+
+        long orgInputTokens = 0;
+        long orgOutputTokens = 0;
+        long orgRequests = 0;
+        decimal orgTotalSpend = 0m;
+        decimal orgInputSpend = 0m;
+        decimal orgOutputSpend = 0m;
+
+        foreach (var app in apps.OrderBy(a => a.Name))
+        {
+            var appLogs = logs.Where(l => string.Equals(l.AppId, app.AppId, StringComparison.OrdinalIgnoreCase)).ToArray();
+            var reqCount = appLogs.Length;
+            var inTokens = appLogs.Sum(l => (long)l.InputTokens);
+            var outTokens = appLogs.Sum(l => (long)l.OutputTokens);
+
+            var inCost = Math.Round((decimal)((inTokens / 1_000_000.0) * app.InputCostPerMillion), 6);
+            var outCost = Math.Round((decimal)((outTokens / 1_000_000.0) * app.OutputCostPerMillion), 6);
+            var totalCost = inCost + outCost;
+
+            var lastLog = appLogs.OrderByDescending(l => l.Timestamp).FirstOrDefault();
+
+            orgInputTokens += inTokens;
+            orgOutputTokens += outTokens;
+            orgRequests += reqCount;
+            orgTotalSpend += totalCost;
+            orgInputSpend += inCost;
+            orgOutputSpend += outCost;
+
+            appBills.Add(new AppBillingSummary
+            {
+                AppId = app.AppId,
+                Name = app.Name,
+                Model = app.Model,
+                Provider = app.Provider,
+                TotalRequests = reqCount,
+                InputTokens = inTokens,
+                OutputTokens = outTokens,
+                InputCostPerMillion = app.InputCostPerMillion,
+                OutputCostPerMillion = app.OutputCostPerMillion,
+                InputCostUsd = inCost,
+                OutputCostUsd = outCost,
+                LastInvokedAt = lastLog?.Timestamp,
+                IsActive = app.IsActive
+            });
+        }
+
+        // Calculate percentage share of spend
+        foreach (var bill in appBills)
+        {
+            bill.CostSharePercentage = orgTotalSpend > 0m
+                ? Math.Round((double)(bill.TotalCostUsd / orgTotalSpend) * 100.0, 2)
+                : 0.0;
+        }
+
+        var topApp = appBills.OrderByDescending(b => b.TotalCostUsd).FirstOrDefault();
+
+        var report = new OrganizationBillingReport
+        {
+            TotalSpendUsd = orgTotalSpend,
+            TotalInputCostUsd = orgInputSpend,
+            TotalOutputCostUsd = orgOutputSpend,
+            TotalTokens = orgInputTokens + orgOutputTokens,
+            TotalInputTokens = orgInputTokens,
+            TotalOutputTokens = orgOutputTokens,
+            TotalRequests = orgRequests,
+            HighestSpendingAppId = topApp?.AppId ?? "None",
+            HighestSpendingAppName = topApp?.Name ?? "None",
+            HighestSpendingAppAmountUsd = topApp?.TotalCostUsd ?? 0m,
+            AppBills = appBills.OrderByDescending(b => b.TotalCostUsd).ThenBy(b => b.Name).ToList(),
+            GeneratedAt = DateTimeOffset.UtcNow
+        };
+
+        return Task.FromResult(report);
+    }
+
+    public async Task<string> ExportBillingCsvAsync(CancellationToken cancellationToken = default)
+    {
+        var report = await GetBillingSummaryAsync(cancellationToken);
+        var sb = new System.Text.StringBuilder();
+
+        sb.AppendLine("App ID,Application Name,Provider,Model,Total Requests,Input Tokens,Output Tokens,Total Tokens,Input Rate ($/1M),Output Rate ($/1M),Input Cost ($),Output Cost ($),Total Cost ($),Share of Spend (%),Is Active");
+
+        foreach (var bill in report.AppBills)
+        {
+            sb.AppendLine(string.Join(",",
+                EscapeCsv(bill.AppId),
+                EscapeCsv(bill.Name),
+                EscapeCsv(bill.Provider),
+                EscapeCsv(bill.Model),
+                bill.TotalRequests,
+                bill.InputTokens,
+                bill.OutputTokens,
+                bill.TotalTokens,
+                bill.InputCostPerMillion.ToString("F4"),
+                bill.OutputCostPerMillion.ToString("F4"),
+                bill.InputCostUsd.ToString("F4"),
+                bill.OutputCostUsd.ToString("F4"),
+                bill.TotalCostUsd.ToString("F4"),
+                bill.CostSharePercentage.ToString("F2") + "%",
+                bill.IsActive));
+        }
+
+        return sb.ToString();
+    }
+
+    private static string EscapeCsv(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return "\"\"";
+        return $"\"{value.Replace("\"", "\"\"")}\"";
     }
 
     private void PersistRegistryToFile()

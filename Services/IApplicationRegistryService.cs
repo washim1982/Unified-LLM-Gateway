@@ -23,4 +23,8 @@ public interface IApplicationRegistryService
 
     Task RecordMetricAsync(RequestLogEntry log, CancellationToken cancellationToken = default);
     Task<GatewayMetricsSummary> GetMetricsSummaryAsync(CancellationToken cancellationToken = default);
+
+    // Financial & Cost Governance Operations
+    Task<OrganizationBillingReport> GetBillingSummaryAsync(CancellationToken cancellationToken = default);
+    Task<string> ExportBillingCsvAsync(CancellationToken cancellationToken = default);
 }

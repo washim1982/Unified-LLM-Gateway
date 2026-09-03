@@ -71,6 +71,7 @@ public class AbuseControlsTests
             mockRegistry.Object,
             realGuardrailService,
             mockAuditLog.Object,
+            new PrometheusMetricsService(),
             guardrailOptions,
             NullLogger<ModelRouter>.Instance);
 

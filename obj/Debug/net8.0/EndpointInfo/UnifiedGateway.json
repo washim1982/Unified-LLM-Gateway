@@ -256,6 +256,19 @@
         }
       }
     },
+    "/api/metrics/prometheus": {
+      "get": {
+        "tags": [
+          "Dashboard & Management"
+        ],
+        "operationId": "GetPrometheusMetricsText",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/audit/logs": {
       "get": {
         "tags": [
@@ -357,6 +370,34 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/billing": {
+      "get": {
+        "tags": [
+          "Dashboard & Management"
+        ],
+        "summary": "Get organization-wide financial summary and per-application token billing breakdown",
+        "operationId": "GetBillingSummary",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/billing/export": {
+      "get": {
+        "tags": [
+          "Dashboard & Management"
+        ],
+        "summary": "Export application billing and token cost report as CSV spreadsheet",
+        "operationId": "ExportBillingCsv",
         "responses": {
           "200": {
             "description": "OK"
@@ -712,6 +753,20 @@
         }
       }
     },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "Observability & Prometheus"
+        ],
+        "summary": "Standard Prometheus text exposition scrape endpoint (version 0.0.4)",
+        "operationId": "PrometheusMetrics",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/status": {
       "get": {
         "tags": [
@@ -876,6 +931,14 @@
               "type": "string"
             },
             "nullable": true
+          },
+          "inputCostPerMillion": {
+            "type": "number",
+            "format": "double"
+          },
+          "outputCostPerMillion": {
+            "type": "number",
+            "format": "double"
           }
         },
         "additionalProperties": false
@@ -1238,6 +1301,16 @@
             "items": {
               "type": "string"
             },
+            "nullable": true
+          },
+          "inputCostPerMillion": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "outputCostPerMillion": {
+            "type": "number",
+            "format": "double",
             "nullable": true
           },
           "isActive": {

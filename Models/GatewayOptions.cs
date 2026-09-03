@@ -13,6 +13,7 @@ public class GatewayOptions
     public SecurityOptions Security { get; set; } = new();
     public StorageOptions Storage { get; set; } = new();
     public GuardrailOptions Guardrails { get; set; } = new();
+    public ObservabilityOptions Observability { get; set; } = new();
 }
 
 public enum AwsAuthenticationType
@@ -135,4 +136,10 @@ public class StorageOptions
     public string? S3BucketName { get; set; }
     public string S3Prefix { get; set; } = "audit_logs/";
     public int S3GlacierTransitionDays { get; set; } = 30;
+}
+
+public class ObservabilityOptions
+{
+    public bool EnablePrometheus { get; set; } = true;
+    public string PrometheusMetricsPath { get; set; } = "/metrics";
 }

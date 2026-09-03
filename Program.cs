@@ -51,13 +51,14 @@ builder.Services.AddHttpClient("LlamaCppClient", client =>
 builder.Services.AddSingleton<ISecurityService, SecurityService>();
 builder.Services.AddSingleton<IGuardrailService, GuardrailService>();
 builder.Services.AddSingleton<IAuditLogService, AuditLogService>();
+builder.Services.AddSingleton<IPrometheusMetricsService, PrometheusMetricsService>();
 builder.Services.AddSingleton<ISTSService, STSService>();
 builder.Services.AddSingleton<IBedrockService, BedrockService>();
 builder.Services.AddSingleton<ILocalModelService, LocalModelService>();
 builder.Services.AddSingleton<IApplicationRegistryService, ApplicationRegistryService>();
 builder.Services.AddSingleton<IModelRouter, ModelRouter>();
 
-// 5. Credential Auto-Refresh Background Service
+// 5. Background Services
 builder.Services.AddHostedService<AwsCredentialBackgroundService>();
 
 // 6. CORS Policy
