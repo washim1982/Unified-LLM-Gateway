@@ -1,0 +1,43 @@
+## Build Results
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Tt]est_out/
+obj/
+bin/
+
+## Visual Studio & IDE Files
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+*.launch
+*.tmp
+
+## Runtime / Generated Data
+data/audit_logs/*.jsonl
+data/chunks_head/
+data/loki/
+data/wal/
+data/queries.active
+data/lock
+data/promtail_positions.yaml
+data/dev/
+
+## Logs and coverage
+*.log
+*.coverage
+*.coveragexml
+coverage/
+TestResults/
+
+## OS Files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
