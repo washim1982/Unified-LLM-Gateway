@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Moq;
 using UnifiedGateway.Models;
 using UnifiedGateway.Services;
 using Xunit;
@@ -25,7 +26,8 @@ public class AuditLogServiceTests
             }
         });
 
-        await using var auditService = new AuditLogService(options, NullLogger<AuditLogService>.Instance);
+        var mockS3 = new Mock<IS3ArchiveService>();
+        await using var auditService = new AuditLogService(options, mockS3.Object, NullLogger<AuditLogService>.Instance);
 
         var record1 = new AuditLogRecord
         {
