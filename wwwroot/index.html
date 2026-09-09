@@ -72,6 +72,26 @@
           <p id="page-subheading">Manage per-application AI routing endpoints and system prompts</p>
         </div>
         <div class="topbar-actions">
+          <!-- Simulated Okta Authentication & AD Group Switcher -->
+          <div class="okta-persona-box" id="okta-persona-box">
+            <div class="okta-persona-icon" title="Simulated Okta Identity Provider (Local)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
+            </div>
+            <div class="okta-persona-details">
+              <div class="okta-persona-top">
+                <span class="okta-label">Okta AD Group:</span>
+                <span class="badge badge-admin" id="okta-role-badge">UnifiedGateway-Admins</span>
+              </div>
+              <select id="okta-user-select" class="okta-dropdown">
+                <option value="wasim.khan@gmail.com">Wasim Khan (wasim.khan@gmail.com) [Admin]</option>
+                <option value="dev-user@gmail.com">Developer User (dev-user@gmail.com) [Dev Only]</option>
+              </select>
+            </div>
+          </div>
+
           <button class="btn btn-outline" id="btn-refresh-status">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
             Refresh

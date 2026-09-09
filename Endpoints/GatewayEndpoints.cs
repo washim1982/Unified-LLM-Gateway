@@ -131,7 +131,7 @@ public static class GatewayEndpoints
 
         #region Application Invocation Endpoints
 
-        // Per-application generated endpoint (Accepts long-term API key OR short-term STS token)
+        // Per-application generated endpoint (Accepts long-term API key, short-term STS token, or Okta JWT)
         group.MapPost("/{appId}/invoke", async (
             string appId,
             [FromBody] InvokeAppRequest request,
@@ -139,6 +139,7 @@ public static class GatewayEndpoints
             [FromHeader(Name = "X-API-Key")] string? xApiKey,
             [FromHeader(Name = "Authorization")] string? authHeader,
             IApplicationRegistryService registryService,
+            IOktaSimulatorService oktaService,
             IOptions<GatewayOptions> options,
             IModelRouter router,
             CancellationToken ct) =>
@@ -146,6 +147,28 @@ public static class GatewayEndpoints
             var apiKey = ExtractApiKey(xApiKey, authHeader);
             var clientIp = ResolveClientIp(httpContext);
             var (isValid, appConfig, failureReason) = await registryService.AuthenticateAppAsync(appId, apiKey, clientIp, ct);
+
+            if (!isValid || appConfig == null)
+            {
+                // Fallback: Check if authenticated via Okta JWT (Developer or Admin)
+                if (!string.IsNullOrWhiteSpace(apiKey))
+                {
+                    var (isOktaValid, oktaPrincipal, _) = oktaService.ValidateOktaJwt(apiKey);
+                    if (isOktaValid && oktaPrincipal != null)
+                    {
+                        var groups = oktaPrincipal.FindAll("groups").Select(c => c.Value).ToList();
+                        if (groups.Contains(AdGroups.Developers, StringComparer.OrdinalIgnoreCase) ||
+                            groups.Contains(AdGroups.Admins, StringComparer.OrdinalIgnoreCase))
+                        {
+                            appConfig = await registryService.GetAppAsync(appId, ct);
+                            if (appConfig != null)
+                            {
+                                isValid = true;
+                            }
+                        }
+                    }
+                }
+            }
 
             if (!isValid || appConfig == null)
             {
@@ -170,7 +193,7 @@ public static class GatewayEndpoints
                     Error = new GatewayError
                     {
                         Code = "UNAUTHORIZED",
-                        Message = "Invalid, expired, or missing API key / STS token for this application. Pass via 'X-API-Key' or 'Authorization: Bearer <token>'."
+                        Message = "Invalid, expired, or missing API key / STS token / Okta JWT for this application. Pass via 'X-API-Key' or 'Authorization: Bearer <token>'."
                     }
                 }, statusCode: StatusCodes.Status401Unauthorized);
             }
@@ -231,13 +254,14 @@ public static class GatewayEndpoints
         .Produces<UniversalResponse>(StatusCodes.Status429TooManyRequests)
         .Produces<UniversalResponse>(StatusCodes.Status404NotFound);
 
-        // Universal direct endpoint for admin/orchestrators (Accepts Admin Master API Key OR Admin STS Token)
+        // Universal direct endpoint for admin/orchestrators (Accepts Admin Master API Key, Admin STS Token, or Okta Admins JWT)
         group.MapPost("/universal/invoke", async (
             [FromBody] UniversalRequest request,
             [FromHeader(Name = "X-API-Key")] string? xApiKey,
             [FromHeader(Name = "Authorization")] string? authHeader,
             IOptions<GatewayOptions> options,
             ISecurityService securityService,
+            IOktaSimulatorService oktaService,
             IModelRouter router,
             CancellationToken ct) =>
         {
@@ -247,6 +271,7 @@ public static class GatewayEndpoints
             if (options.Value.Security.EnforceAppApiKey)
             {
                 var isAuthorized = false;
+                string? authFailureMessage = null;
 
                 if (!string.IsNullOrWhiteSpace(apiKey))
                 {
@@ -260,7 +285,26 @@ public static class GatewayEndpoints
                     }
                     else
                     {
-                        isAuthorized = securityService.VerifyKey(apiKey, securityService.HashKey(expectedKey));
+                        // Check 1: Okta JWT
+                        var (isOktaValid, oktaPrincipal, _) = oktaService.ValidateOktaJwt(apiKey);
+                        if (isOktaValid && oktaPrincipal != null)
+                        {
+                            var groups = oktaPrincipal.FindAll("groups").Select(c => c.Value).ToList();
+                            if (groups.Contains(AdGroups.Admins, StringComparer.OrdinalIgnoreCase))
+                            {
+                                isAuthorized = true;
+                            }
+                            else
+                            {
+                                var email = oktaPrincipal.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? "unknown";
+                                authFailureMessage = $"Access Denied: Okta user '{email}' belongs to [{string.Join(", ", groups)}], but Universal Router requires '{AdGroups.Admins}'.";
+                            }
+                        }
+                        else
+                        {
+                            // Check 2: Master Admin API Key
+                            isAuthorized = securityService.VerifyKey(apiKey, securityService.HashKey(expectedKey));
+                        }
                     }
                 }
 
@@ -272,7 +316,7 @@ public static class GatewayEndpoints
                         Error = new GatewayError
                         {
                             Code = "ADMIN_UNAUTHORIZED",
-                            Message = "Universal endpoint requires a valid Master Admin API Key or Admin STS Token."
+                            Message = authFailureMessage ?? "Universal endpoint requires a valid Master Admin API Key, Admin STS Token, or Okta JWT belonging to 'UnifiedGateway-Admins'."
                         }
                     }, statusCode: StatusCodes.Status401Unauthorized);
                 }

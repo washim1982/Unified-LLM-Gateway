@@ -59,6 +59,7 @@ builder.Services.AddSingleton<IAuditLogService, AuditLogService>();
 builder.Services.AddSingleton<IPrometheusMetricsService, PrometheusMetricsService>();
 builder.Services.AddSingleton<IBedrockService, BedrockService>();
 builder.Services.AddSingleton<ILocalModelService, LocalModelService>();
+builder.Services.AddSingleton<IOktaSimulatorService, OktaSimulatorService>();
 builder.Services.AddSingleton<IApplicationRegistryService, ApplicationRegistryService>();
 builder.Services.AddSingleton<IModelRouter, ModelRouter>();
 
@@ -176,6 +177,23 @@ app.Use(async (context, next) =>
 app.UseCors("GatewayCorsPolicy");
 app.UseRateLimiter();
 
+// 9. Simulated Okta Authentication & Identity Enrichment Middleware
+app.Use(async (context, next) =>
+{
+    var authHeader = context.Request.Headers.Authorization.ToString();
+    if (!string.IsNullOrWhiteSpace(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+    {
+        var token = authHeader[7..].Trim();
+        var oktaService = context.RequestServices.GetRequiredService<IOktaSimulatorService>();
+        var (isValid, principal, _) = oktaService.ValidateOktaJwt(token);
+        if (isValid && principal != null)
+        {
+            context.User = principal;
+        }
+    }
+    await next();
+});
+
 if (app.Environment.IsDevelopment() || app.Environment.IsStaging() || app.Environment.IsEnvironment("Test"))
 {
     app.UseSwagger();
@@ -190,7 +208,8 @@ if (app.Environment.IsDevelopment() || app.Environment.IsStaging() || app.Enviro
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-// 9. Map Minimal API Endpoints
+// 10. Map Minimal API Endpoints
+app.MapAuthEndpoints();
 app.MapGatewayEndpoints();
 app.MapDashboardEndpoints();
 

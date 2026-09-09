@@ -33,9 +33,21 @@ public static class DashboardEndpoints
         })
         .WithName("GetApplication");
 
-        // Create new application (generates endpoint, API key, and initial STS token)
-        group.MapPost("/apps", async ([FromBody] CreateAppRequest request, IApplicationRegistryService registry, CancellationToken ct) =>
+        // Create new application (generates endpoint, API key, and initial STS token) - Admin Only
+        group.MapPost("/apps", async (
+            [FromBody] CreateAppRequest request,
+            HttpContext httpContext,
+            IOktaSimulatorService oktaService,
+            IOptions<GatewayOptions> options,
+            IApplicationRegistryService registry,
+            CancellationToken ct) =>
         {
+            var (isAuth, authError) = CheckOktaAuthorization(httpContext, oktaService, options, AdGroups.Admins);
+            if (!isAuth)
+            {
+                return Results.Json(new { error = "FORBIDDEN", message = authError }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
             try
             {
                 var created = await registry.CreateAppAsync(request, ct);
@@ -48,30 +60,64 @@ public static class DashboardEndpoints
         })
         .WithName("CreateApplication");
 
-        // Update application (increments version and updates prompt/config)
-        group.MapPut("/apps/{appId}", async (string appId, [FromBody] UpdateAppRequest request, IApplicationRegistryService registry, CancellationToken ct) =>
+        // Update application (increments version and updates prompt/config) - Admin Only
+        group.MapPut("/apps/{appId}", async (
+            string appId,
+            [FromBody] UpdateAppRequest request,
+            HttpContext httpContext,
+            IOktaSimulatorService oktaService,
+            IOptions<GatewayOptions> options,
+            IApplicationRegistryService registry,
+            CancellationToken ct) =>
         {
+            var (isAuth, authError) = CheckOktaAuthorization(httpContext, oktaService, options, AdGroups.Admins);
+            if (!isAuth)
+            {
+                return Results.Json(new { error = "FORBIDDEN", message = authError }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
             var updated = await registry.UpdateAppAsync(appId, request, ct);
             return updated is not null ? Results.Ok(updated) : Results.NotFound(new { error = "Application not found" });
         })
         .WithName("UpdateApplication");
 
-        // Delete application
-        group.MapDelete("/apps/{appId}", async (string appId, IApplicationRegistryService registry, CancellationToken ct) =>
+        // Delete application - Admin Only
+        group.MapDelete("/apps/{appId}", async (
+            string appId,
+            HttpContext httpContext,
+            IOktaSimulatorService oktaService,
+            IOptions<GatewayOptions> options,
+            IApplicationRegistryService registry,
+            CancellationToken ct) =>
         {
+            var (isAuth, authError) = CheckOktaAuthorization(httpContext, oktaService, options, AdGroups.Admins);
+            if (!isAuth)
+            {
+                return Results.Json(new { error = "FORBIDDEN", message = authError }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
             var deleted = await registry.DeleteAppAsync(appId, ct);
             return deleted ? Results.NoContent() : Results.NotFound(new { error = "Application not found" });
         })
         .WithName("DeleteApplication");
 
-        // Mint short temporary secret (STS token) for an application from dashboard
+        // Mint short temporary secret (STS token) for an application from dashboard - Admin Only
         group.MapPost("/apps/{appId}/sts-token", async (
             string appId,
             [FromQuery] int? durationSeconds,
             [FromQuery] string? scope,
+            HttpContext httpContext,
+            IOktaSimulatorService oktaService,
+            IOptions<GatewayOptions> options,
             IApplicationRegistryService registry,
             CancellationToken ct) =>
         {
+            var (isAuth, authError) = CheckOktaAuthorization(httpContext, oktaService, options, AdGroups.Admins);
+            if (!isAuth)
+            {
+                return Results.Json(new { error = "FORBIDDEN", message = authError }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
             var app = await registry.GetAppAsync(appId, ct);
             if (app == null)
             {
@@ -90,13 +136,22 @@ public static class DashboardEndpoints
         })
         .WithName("MintAppStsToken");
 
-        // Rotate Application API Key (Zero-Downtime with Grace Period)
+        // Rotate Application API Key (Zero-Downtime with Grace Period) - Admin Only
         group.MapPost("/apps/{appId}/rotate-key", async (
             string appId,
             [FromBody] RotateKeyRequest? request,
+            HttpContext httpContext,
+            IOktaSimulatorService oktaService,
+            IOptions<GatewayOptions> options,
             IApplicationRegistryService registry,
             CancellationToken ct) =>
         {
+            var (isAuth, authError) = CheckOktaAuthorization(httpContext, oktaService, options, AdGroups.Admins);
+            if (!isAuth)
+            {
+                return Results.Json(new { error = "FORBIDDEN", message = authError }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
             var graceDays = request?.GracePeriodDays ?? 7;
             var rotateResp = await registry.RotateAppApiKeyAsync(appId, graceDays, ct);
 
@@ -110,12 +165,21 @@ public static class DashboardEndpoints
         .WithName("RotateAppApiKey")
         .WithSummary("Rotate primary application API key while keeping previous key as secondary grace-period key");
 
-        // Revoke Secondary Application API Key (Emergency Revocation)
+        // Revoke Secondary Application API Key (Emergency Revocation) - Admin Only
         group.MapPost("/apps/{appId}/revoke-secondary-key", async (
             string appId,
+            HttpContext httpContext,
+            IOktaSimulatorService oktaService,
+            IOptions<GatewayOptions> options,
             IApplicationRegistryService registry,
             CancellationToken ct) =>
         {
+            var (isAuth, authError) = CheckOktaAuthorization(httpContext, oktaService, options, AdGroups.Admins);
+            if (!isAuth)
+            {
+                return Results.Json(new { error = "FORBIDDEN", message = authError }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
             var revokeResp = await registry.RevokeSecondaryApiKeyAsync(appId, ct);
 
             if (revokeResp == null)
@@ -128,7 +192,7 @@ public static class DashboardEndpoints
         .WithName("RevokeSecondaryApiKey")
         .WithSummary("Immediately revoke secondary grace-period key for an application");
 
-        // Test application invocation from dashboard
+        // Test application invocation from dashboard (Allowed for Developers and Admins)
         group.MapPost("/apps/{appId}/test", async (
             string appId,
             [FromBody] InvokeAppRequest request,
@@ -374,9 +438,20 @@ public static class DashboardEndpoints
         .WithName("GetGuardrailConfig")
         .WithSummary("Retrieve current enterprise safety guardrail rules and active mode");
 
-        // Update Guardrail Configuration
-        group.MapPut("/guardrails/config", ([FromBody] GuardrailOptions options, IGuardrailService guardrailService) =>
+        // Update Guardrail Configuration - Admin Only
+        group.MapPut("/guardrails/config", (
+            [FromBody] GuardrailOptions options,
+            HttpContext httpContext,
+            IOktaSimulatorService oktaService,
+            IOptions<GatewayOptions> gatewayOpts,
+            IGuardrailService guardrailService) =>
         {
+            var (isAuth, authError) = CheckOktaAuthorization(httpContext, oktaService, gatewayOpts, AdGroups.Admins);
+            if (!isAuth)
+            {
+                return Results.Json(new { error = "FORBIDDEN", message = authError }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
             guardrailService.UpdateOptions(options);
             return Results.Ok(new { message = "Guardrail configuration updated successfully", config = options });
         })
@@ -416,5 +491,57 @@ public static class DashboardEndpoints
         .WithSummary("Interactive sandbox to test simulated model response text for leaked credentials/PII");
 
         #endregion
+    }
+
+    private static (bool isAuthorized, string? error) CheckOktaAuthorization(
+        HttpContext httpContext,
+        IOktaSimulatorService oktaService,
+        IOptions<GatewayOptions> options,
+        string requiredGroup)
+    {
+        var xApiKey = httpContext.Request.Headers["X-API-Key"].ToString();
+        var authHeader = httpContext.Request.Headers.Authorization.ToString();
+        var adminApiKey = options.Value.Security.AdminApiKey;
+
+        // 1. Master Admin API Key check
+        if (!string.IsNullOrWhiteSpace(adminApiKey))
+        {
+            if (string.Equals(xApiKey, adminApiKey, StringComparison.Ordinal) ||
+                string.Equals(authHeader, $"Bearer {adminApiKey}", StringComparison.Ordinal))
+            {
+                return (true, null);
+            }
+        }
+
+        // 2. Okta Bearer JWT check
+        if (!string.IsNullOrWhiteSpace(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        {
+            var token = authHeader[7..].Trim();
+            var (isValid, principal, failureReason) = oktaService.ValidateOktaJwt(token);
+            if (isValid && principal != null)
+            {
+                var userGroups = principal.FindAll("groups").Select(c => c.Value).ToList();
+                if (userGroups.Any(g => string.Equals(g, requiredGroup, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return (true, null);
+                }
+
+                var userEmail = principal.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? "Unknown";
+                return (false, $"Access Denied: User '{userEmail}' does not have the required AD group '{requiredGroup}'. Active groups: [{string.Join(", ", userGroups)}].");
+            }
+
+            if (!isValid)
+            {
+                return (false, $"Invalid Okta JWT: {failureReason}");
+            }
+        }
+
+        // 3. Fallback when enforcement is enabled
+        if (options.Value.Security.EnforceAppApiKey)
+        {
+            return (false, $"Authentication required: Please provide an Okta JWT via 'Authorization: Bearer <token>' with AD group '{requiredGroup}' or a valid Master Admin API Key.");
+        }
+
+        return (true, null);
     }
 }

@@ -8,6 +8,81 @@ document.addEventListener('DOMContentLoaded', () => {
   let selectedAppForStsModal = null;
   let selectedAppForRotateModal = null;
 
+  // Simulated Okta Authentication State
+  let currentOktaUser = localStorage.getItem('ug_okta_user') || 'wasim.khan@gmail.com';
+  let currentOktaToken = localStorage.getItem('ug_okta_token') || null;
+  let currentOktaProfile = null;
+  const oktaUserSelect = document.getElementById('okta-user-select');
+  const oktaRoleBadge = document.getElementById('okta-role-badge');
+
+  // Intercept window.fetch to automatically append active Okta Bearer token to all requests
+  const originalFetch = window.fetch;
+  window.fetch = async function(resource, init = {}) {
+    init.headers = init.headers || {};
+    if (currentOktaToken) {
+      if (init.headers instanceof Headers) {
+        if (!init.headers.has('Authorization')) {
+          init.headers.set('Authorization', `Bearer ${currentOktaToken}`);
+        }
+      } else if (Array.isArray(init.headers)) {
+        init.headers.push(['Authorization', `Bearer ${currentOktaToken}`]);
+      } else {
+        if (!init.headers['Authorization']) {
+          init.headers['Authorization'] = `Bearer ${currentOktaToken}`;
+        }
+      }
+    }
+    return originalFetch(resource, init);
+  };
+
+  async function loginOktaUser(email) {
+    try {
+      const res = await originalFetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        currentOktaUser = email;
+        currentOktaToken = data.access_token;
+        currentOktaProfile = data.user;
+        localStorage.setItem('ug_okta_token', currentOktaToken);
+        localStorage.setItem('ug_okta_user', email);
+        if (oktaUserSelect) oktaUserSelect.value = email;
+        updateOktaUi();
+      }
+    } catch (e) {
+      console.error('Error in Okta login', e);
+    }
+  }
+
+  function updateOktaUi() {
+    if (!currentOktaProfile) return;
+    const isAdmin = currentOktaProfile.isAdmin;
+
+    if (oktaRoleBadge) {
+      oktaRoleBadge.textContent = isAdmin ? 'UnifiedGateway-Admins' : 'UnifiedGateway-Developers';
+      oktaRoleBadge.className = `badge ${isAdmin ? 'badge-admin' : 'badge-dev'}`;
+    }
+
+    if (btnOpenCreateModal) {
+      btnOpenCreateModal.style.display = isAdmin ? 'inline-flex' : 'none';
+    }
+
+    document.querySelectorAll('.app-admin-only').forEach(el => {
+      el.style.display = isAdmin ? 'inline-flex' : 'none';
+    });
+  }
+
+  if (oktaUserSelect) {
+    oktaUserSelect.value = currentOktaUser;
+    oktaUserSelect.addEventListener('change', async (e) => {
+      await loginOktaUser(e.target.value);
+      await loadApps();
+    });
+  }
+
   // DOM Elements
   const navButtons = document.querySelectorAll('.nav-btn');
   const tabPanes = document.querySelectorAll('.tab-pane');
@@ -499,14 +574,15 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         <div class="app-card-actions" style="display:flex; gap:6px; flex-wrap:wrap;">
           <button class="btn btn-primary btn-sm" onclick="selectAppForTest('${app.appId}')">Test API</button>
-          <button class="btn btn-outline btn-sm" onclick="openEditModalForApp('${app.appId}')" style="border-color: rgba(52,211,153,0.5); color:#34d399;">💵 Edit Pricing</button>
-          <button class="btn btn-outline btn-sm" onclick="openStsModalForApp('${app.appId}')" style="border-color: rgba(156,163,175,0.4); color:#cbd5e1;">⚡ Mint STS</button>
-          <button class="btn btn-outline btn-sm" onclick="openRotateModalForApp('${app.appId}')" style="border-color: rgba(139,92,246,0.5); color:#a78bfa;">🔄 Rotate Key</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteApp('${app.appId}')">Delete</button>
+          <button class="btn btn-outline btn-sm app-admin-only" onclick="openEditModalForApp('${app.appId}')" style="border-color: rgba(52,211,153,0.5); color:#34d399;">💵 Edit Pricing</button>
+          <button class="btn btn-outline btn-sm app-admin-only" onclick="openStsModalForApp('${app.appId}')" style="border-color: rgba(156,163,175,0.4); color:#cbd5e1;">⚡ Mint STS</button>
+          <button class="btn btn-outline btn-sm app-admin-only" onclick="openRotateModalForApp('${app.appId}')" style="border-color: rgba(139,92,246,0.5); color:#a78bfa;">🔄 Rotate Key</button>
+          <button class="btn btn-danger btn-sm app-admin-only" onclick="deleteApp('${app.appId}')">Delete</button>
         </div>
       `;
       container.appendChild(card);
     });
+    updateOktaUi();
   }
 
   function renderGeneratorSelect(apps) {
@@ -2228,9 +2304,11 @@ Write-Output $response.output`;
     return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
   }
 
-  // Initial Load
-  loadStsStatus();
-  loadModels();
-  loadApps();
-  loadGuardrailConfig();
+  // Initial Load with Simulated Okta Authentication
+  loginOktaUser(currentOktaUser).finally(() => {
+    loadStsStatus();
+    loadModels();
+    loadApps();
+    loadGuardrailConfig();
+  });
 });
