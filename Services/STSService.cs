@@ -4,6 +4,7 @@ using Amazon.Runtime.CredentialManagement;
 using Amazon.SecurityToken;
 using Amazon.SecurityToken.Model;
 using Microsoft.Extensions.Options;
+using System.Net.Http.Json;
 using System.Security.Cryptography.X509Certificates;
 using UnifiedGateway.Models;
 
@@ -13,6 +14,7 @@ public class STSService : ISTSService, IDisposable
 {
     private readonly GatewayOptions _options;
     private readonly ISecurityService _securityService;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<STSService> _logger;
     private readonly SemaphoreSlim _lock = new(1, 1);
 
@@ -25,10 +27,12 @@ public class STSService : ISTSService, IDisposable
     public STSService(
         IOptions<GatewayOptions> options,
         ISecurityService securityService,
+        IHttpClientFactory httpClientFactory,
         ILogger<STSService> logger)
     {
         _options = options.Value;
         _securityService = securityService;
+        _httpClientFactory = httpClientFactory;
         _logger = logger;
         _activeAuthType = _options.Aws.ResolvedAuthType;
     }
@@ -128,6 +132,45 @@ public class STSService : ISTSService, IDisposable
                     break;
             }
 
+            // Direct Simulator STS AssumeRole integration if StsEndpoint is specified
+            if (!string.IsNullOrWhiteSpace(_options.Aws.StsEndpoint) && !string.IsNullOrWhiteSpace(_options.Aws.AssumeRoleArn))
+            {
+                try
+                {
+                    var simUrl = $"{_options.Aws.StsEndpoint.TrimEnd('/')}/sts/assume-role";
+                    var client = _httpClientFactory.CreateClient();
+                    var payload = new
+                    {
+                        RoleArn = _options.Aws.AssumeRoleArn,
+                        RoleSessionName = _options.Aws.RoleSessionName ?? "UnifiedGatewaySession",
+                        DurationSeconds = _options.Aws.SessionDurationSeconds > 0 ? _options.Aws.SessionDurationSeconds : 3600
+                    };
+
+                    var simResp = await client.PostAsJsonAsync(simUrl, payload, cancellationToken);
+                    if (simResp.IsSuccessStatusCode)
+                    {
+                        var data = await simResp.Content.ReadFromJsonAsync<SimulatorAssumeRoleResponse>(cancellationToken: cancellationToken);
+                        if (data?.Credentials != null)
+                        {
+                            _cachedCredentials = new SessionAWSCredentials(
+                                data.Credentials.AccessKeyId,
+                                data.Credentials.SecretAccessKey,
+                                data.Credentials.SessionToken
+                            );
+                            _expirationUtc = data.Credentials.Expiration;
+                            _isAssumedRole = true;
+                            _lastError = null;
+                            _logger.LogInformation("STS AssumeRole succeeded via Simulator (:5001). Session valid until: {ExpirationUtc}", _expirationUtc);
+                            return;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed connecting to Simulator STS endpoint, checking standard credentials chain.");
+                }
+            }
+
             if (baseCredentials == null)
             {
                 _cachedCredentials = null;
@@ -143,7 +186,21 @@ public class STSService : ISTSService, IDisposable
                 _logger.LogInformation("Assuming AWS IAM Role: {RoleArnMasked}",
                     _securityService.MaskSecret(_options.Aws.AssumeRoleArn, 12));
 
-                using var stsClient = new AmazonSecurityTokenServiceClient(baseCredentials, regionEndpoint);
+                var stsConfig = new AmazonSecurityTokenServiceConfig
+                {
+                    RegionEndpoint = regionEndpoint
+                };
+
+                if (!string.IsNullOrWhiteSpace(_options.Aws.StsEndpoint))
+                {
+                    stsConfig.ServiceURL = _options.Aws.StsEndpoint;
+                }
+                else if (!string.IsNullOrWhiteSpace(_options.Aws.ServiceUrl))
+                {
+                    stsConfig.ServiceURL = $"{_options.Aws.ServiceUrl.TrimEnd('/')}/iam";
+                }
+
+                using var stsClient = new AmazonSecurityTokenServiceClient(baseCredentials, stsConfig);
                 var assumeRequest = new AssumeRoleRequest
                 {
                     RoleArn = _options.Aws.AssumeRoleArn,
@@ -296,5 +353,26 @@ public class STSService : ISTSService, IDisposable
     {
         _lock.Dispose();
         GC.SuppressFinalize(this);
+    }
+
+    private class SimulatorAssumeRoleResponse
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("Credentials")]
+        public SimulatorCredentials? Credentials { get; set; }
+    }
+
+    private class SimulatorCredentials
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("AccessKeyId")]
+        public string AccessKeyId { get; set; } = string.Empty;
+
+        [System.Text.Json.Serialization.JsonPropertyName("SecretAccessKey")]
+        public string SecretAccessKey { get; set; } = string.Empty;
+
+        [System.Text.Json.Serialization.JsonPropertyName("SessionToken")]
+        public string SessionToken { get; set; } = string.Empty;
+
+        [System.Text.Json.Serialization.JsonPropertyName("Expiration")]
+        public DateTimeOffset Expiration { get; set; }
     }
 }

@@ -36,6 +36,13 @@ public class AwsOptions
     public string? ExternalId { get; set; }
     public int RefreshBufferMinutes { get; set; } = 5;
 
+    // Custom Service URLs / Endpoints (Used by local simulator; left null/empty in TEST and PROD to use real AWS cloud)
+    public string? ServiceUrl { get; set; }
+    public string? StsEndpoint { get; set; }
+    public string? S3Endpoint { get; set; }
+    public string? KmsEndpoint { get; set; }
+    public string? BedrockEndpoint { get; set; }
+
     // AWS IAM Roles Anywhere options for On-Premises deployments (TEST & PROD)
     public RolesAnywhereOptions RolesAnywhere { get; set; } = new();
 
@@ -123,6 +130,8 @@ public class SecurityOptions
     // Compliance & Audit
     public bool EnableAuditLogPersistence { get; set; } = true;
     public int AuditLogRetentionDays { get; set; } = 90;
+    public bool EnableTamperEvidentLogging { get; set; } = true;
+    public string S3AuditBucket { get; set; } = "unified-gateway-audit-logs";
 }
 
 public class StorageOptions

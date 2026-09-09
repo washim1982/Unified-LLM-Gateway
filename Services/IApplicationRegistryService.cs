@@ -25,6 +25,7 @@ public interface IApplicationRegistryService
     Task<GatewayMetricsSummary> GetMetricsSummaryAsync(CancellationToken cancellationToken = default);
 
     // Financial & Cost Governance Operations
+    Task<(bool isAllowed, decimal currentSpendUsd, decimal budgetLimitUsd)> CheckDailySpendBudgetAsync(string appId, CancellationToken cancellationToken = default);
     Task<OrganizationBillingReport> GetBillingSummaryAsync(CancellationToken cancellationToken = default);
     Task<string> ExportBillingCsvAsync(CancellationToken cancellationToken = default);
 }

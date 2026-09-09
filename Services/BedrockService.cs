@@ -44,7 +44,21 @@ public class BedrockService : IBedrockService
         {
             var credentials = await _stsService.GetCredentialsAsync(cancellationToken);
             var region = RegionEndpoint.GetBySystemName(_options.Aws.Region);
-            using var client = new AmazonBedrockRuntimeClient(credentials, region);
+            var clientConfig = new AmazonBedrockRuntimeConfig
+            {
+                RegionEndpoint = region
+            };
+
+            if (!string.IsNullOrWhiteSpace(_options.Aws.BedrockEndpoint))
+            {
+                clientConfig.ServiceURL = _options.Aws.BedrockEndpoint;
+            }
+            else if (!string.IsNullOrWhiteSpace(_options.Aws.ServiceUrl))
+            {
+                clientConfig.ServiceURL = $"{_options.Aws.ServiceUrl.TrimEnd('/')}/bedrock";
+            }
+
+            using var client = new AmazonBedrockRuntimeClient(credentials, clientConfig);
 
             var (payloadBytes, contentType) = BuildRequestBody(modelId, request);
 

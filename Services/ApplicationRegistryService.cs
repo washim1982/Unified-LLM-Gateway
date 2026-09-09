@@ -185,6 +185,7 @@ public class ApplicationRegistryService : IApplicationRegistryService
             AllowedCidrs = request.AllowedCidrs ?? [],
             InputCostPerMillion = request.InputCostPerMillion,
             OutputCostPerMillion = request.OutputCostPerMillion,
+            MaxDailySpendUsd = request.MaxDailySpendUsd ?? 0m,
             Version = 1,
             IsActive = true,
             CreatedAt = DateTimeOffset.UtcNow,
@@ -227,6 +228,7 @@ public class ApplicationRegistryService : IApplicationRegistryService
             AllowedCidrs = existing.AllowedCidrs,
             InputCostPerMillion = existing.InputCostPerMillion,
             OutputCostPerMillion = existing.OutputCostPerMillion,
+            MaxDailySpendUsd = existing.MaxDailySpendUsd,
             SavedAt = existing.UpdatedAt
         };
 
@@ -246,6 +248,7 @@ public class ApplicationRegistryService : IApplicationRegistryService
             AllowedCidrs = request.AllowedCidrs ?? existing.AllowedCidrs,
             InputCostPerMillion = request.InputCostPerMillion ?? existing.InputCostPerMillion,
             OutputCostPerMillion = request.OutputCostPerMillion ?? existing.OutputCostPerMillion,
+            MaxDailySpendUsd = request.MaxDailySpendUsd ?? existing.MaxDailySpendUsd,
             IsActive = request.IsActive ?? existing.IsActive,
             Version = existing.Version + 1,
             UpdatedAt = DateTimeOffset.UtcNow,
@@ -835,6 +838,40 @@ public class ApplicationRegistryService : IApplicationRegistryService
         };
 
         return Task.FromResult(report);
+    }
+
+    public Task<(bool isAllowed, decimal currentSpendUsd, decimal budgetLimitUsd)> CheckDailySpendBudgetAsync(string appId, CancellationToken cancellationToken = default)
+    {
+        if (!_apps.TryGetValue(appId, out var app))
+        {
+            return Task.FromResult((true, 0m, 0m));
+        }
+
+        if (!app.MaxDailySpendUsd.HasValue || app.MaxDailySpendUsd.Value <= 0)
+        {
+            return Task.FromResult((true, 0m, 0m));
+        }
+
+        var limit = app.MaxDailySpendUsd.Value;
+        var todayUtc = DateTimeOffset.UtcNow.Date;
+
+        var todayLogs = _recentLogs
+            .Where(l => string.Equals(l.AppId, appId, StringComparison.OrdinalIgnoreCase) && l.Timestamp.UtcDateTime.Date == todayUtc);
+
+        decimal currentSpend = 0m;
+        var inRate = app.InputCostPerMillion;
+        var outRate = app.OutputCostPerMillion;
+
+        foreach (var log in todayLogs)
+        {
+            var cost = (decimal)((log.InputTokens / 1_000_000.0) * inRate + (log.OutputTokens / 1_000_000.0) * outRate);
+            currentSpend += cost;
+        }
+
+        currentSpend = Math.Round(currentSpend, 6);
+        bool isAllowed = currentSpend < limit;
+
+        return Task.FromResult((isAllowed, currentSpend, limit));
     }
 
     public async Task<string> ExportBillingCsvAsync(CancellationToken cancellationToken = default)

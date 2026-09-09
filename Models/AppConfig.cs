@@ -68,6 +68,10 @@ public record AppConfig
     [JsonPropertyName("outputCostPerMillion")]
     public double OutputCostPerMillion { get; init; } = 15.00;
 
+    // Real-Time Spend Budget Circuit Breaker (LLM04 Anti-DoS)
+    [JsonPropertyName("maxDailySpendUsd")]
+    public decimal MaxDailySpendUsd { get; init; } = 0m;
+
     [JsonPropertyName("version")]
     public int Version { get; init; } = 1;
 
@@ -108,10 +112,13 @@ public record AppConfigSnapshot
     public List<string> AllowedCidrs { get; init; } = [];
 
     [JsonPropertyName("inputCostPerMillion")]
-    public double InputCostPerMillion { get; init; } = 3.00;
+    public double InputCostPerMillion { get; init; }
 
     [JsonPropertyName("outputCostPerMillion")]
-    public double OutputCostPerMillion { get; init; } = 15.00;
+    public double OutputCostPerMillion { get; init; }
+
+    [JsonPropertyName("maxDailySpendUsd")]
+    public decimal MaxDailySpendUsd { get; init; } = 0m;
 
     [JsonPropertyName("savedAt")]
     public DateTimeOffset SavedAt { get; init; }
@@ -157,6 +164,9 @@ public record CreateAppRequest
 
     [JsonPropertyName("outputCostPerMillion")]
     public double OutputCostPerMillion { get; init; } = 15.00;
+
+    [JsonPropertyName("maxDailySpendUsd")]
+    public decimal? MaxDailySpendUsd { get; init; }
 }
 
 public record CreateAppResponse
@@ -217,6 +227,9 @@ public record UpdateAppRequest
 
     [JsonPropertyName("outputCostPerMillion")]
     public double? OutputCostPerMillion { get; init; }
+
+    [JsonPropertyName("maxDailySpendUsd")]
+    public decimal? MaxDailySpendUsd { get; init; }
 
     [JsonPropertyName("isActive")]
     public bool? IsActive { get; init; }

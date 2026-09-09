@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -11,9 +12,13 @@ public class AuditLogService : IAuditLogService, IAsyncDisposable
     private readonly Channel<AuditLogRecord> _channel;
     private readonly string _auditLogDir;
     private readonly bool _persistenceEnabled;
+    private readonly GatewayOptions _options;
+    private readonly IS3ArchiveService _s3ArchiveService;
     private readonly ILogger<AuditLogService> _logger;
     private readonly Task _processorTask;
     private readonly CancellationTokenSource _cts = new();
+    private string _lastEntryHash = "GENESIS";
+    private readonly object _hashLock = new();
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -22,14 +27,16 @@ public class AuditLogService : IAuditLogService, IAsyncDisposable
 
     public AuditLogService(
         IOptions<GatewayOptions> options,
+        IS3ArchiveService s3ArchiveService,
         ILogger<AuditLogService> logger)
     {
         _logger = logger;
-        var gatewayOpts = options.Value;
-        _persistenceEnabled = gatewayOpts.Security.EnableAuditLogPersistence;
+        _options = options.Value;
+        _s3ArchiveService = s3ArchiveService;
+        _persistenceEnabled = _options.Security.EnableAuditLogPersistence;
 
-        var baseDir = Path.GetFullPath(gatewayOpts.Storage.DataDirectory);
-        _auditLogDir = Path.Combine(baseDir, gatewayOpts.Storage.AuditLogDirectory);
+        var baseDir = Path.GetFullPath(_options.Storage.DataDirectory);
+        _auditLogDir = Path.Combine(baseDir, _options.Storage.AuditLogDirectory);
 
         if (_persistenceEnabled)
         {
@@ -50,13 +57,36 @@ public class AuditLogService : IAuditLogService, IAsyncDisposable
         if (!_persistenceEnabled)
             return;
 
+        // Apply Cryptographic HMAC-SHA256 Hash Chaining (WORM Compliance)
+        if (_options.Security.EnableTamperEvidentLogging)
+        {
+            lock (_hashLock)
+            {
+                var prev = _lastEntryHash;
+                var currentHash = ComputeEntryHash(prev, record);
+                record = record with { PreviousHash = prev, EntryHash = currentHash };
+                _lastEntryHash = currentHash;
+            }
+        }
+
         _channel.Writer.TryWrite(record);
+    }
+
+    private string ComputeEntryHash(string previousHash, AuditLogRecord r)
+    {
+        var rawData = $"{previousHash}|{r.Timestamp:o}|{r.AppId}|{r.Route}|{r.StatusCode}|{r.TotalTokens}|{r.LatencyMs}|{string.Join(",", r.GuardrailViolations)}";
+        var key = Encoding.UTF8.GetBytes(_options.Security.AdminApiKey);
+        using var hmac = new HMACSHA256(key);
+        var hashBytes = hmac.ComputeHash(Encoding.UTF8.GetBytes(rawData));
+        return Convert.ToHexString(hashBytes).ToLowerInvariant();
     }
 
     private async Task ProcessAuditChannelAsync()
     {
         var reader = _channel.Reader;
         var token = _cts.Token;
+        var batchCount = 0;
+        var lastS3Upload = DateTimeOffset.UtcNow;
 
         while (await reader.WaitToReadAsync(token).ConfigureAwait(false))
         {
@@ -69,12 +99,43 @@ public class AuditLogService : IAuditLogService, IAsyncDisposable
                     var line = JsonSerializer.Serialize(record, JsonOpts) + Environment.NewLine;
 
                     await File.AppendAllTextAsync(filePath, line, Encoding.UTF8, token).ConfigureAwait(false);
+                    batchCount++;
+
+                    // S3 Archival: Flush on every 5 records or every 15 seconds
+                    var elapsed = DateTimeOffset.UtcNow - lastS3Upload;
+                    if (batchCount >= 5 || elapsed > TimeSpan.FromSeconds(15))
+                    {
+                        await ArchiveDailyLogToS3Async(filePath, dateStr, token).ConfigureAwait(false);
+                        batchCount = 0;
+                        lastS3Upload = DateTimeOffset.UtcNow;
+                    }
                 }
                 catch (Exception ex) when (!token.IsCancellationRequested)
                 {
                     _logger.LogError(ex, "Failed to persist audit log entry {AuditId}", record.AuditId);
                 }
             }
+        }
+    }
+
+    private async Task ArchiveDailyLogToS3Async(string filePath, string dateStr, CancellationToken token)
+    {
+        if (!File.Exists(filePath)) return;
+
+        try
+        {
+            var bucket = !string.IsNullOrWhiteSpace(_options.Security.S3AuditBucket)
+                ? _options.Security.S3AuditBucket
+                : "unified-gateway-audit-logs";
+
+            var fileBytes = await File.ReadAllBytesAsync(filePath, token).ConfigureAwait(false);
+            var s3Key = $"audit_logs/{dateStr.Substring(0, 4)}/{dateStr.Substring(4, 2)}/audit_{dateStr}.jsonl";
+
+            await _s3ArchiveService.UploadAuditBatchAsync(bucket, s3Key, fileBytes, "application/x-ndjson", token).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Background S3 archival encounter warning for audit date {Date}", dateStr);
         }
     }
 
@@ -163,7 +224,7 @@ public class AuditLogService : IAuditLogService, IAsyncDisposable
         var result = await QueryLogsAsync(query, cancellationToken);
 
         var sb = new StringBuilder();
-        sb.AppendLine("AuditId,Timestamp,AppId,CallerId,AuthType,KeyPrefix,ClientIp,Route,Model,Provider,InputGuardrails,OutputGuardrails,TokensTotal,LatencyMs,StatusCode,Success,ErrorMessage");
+        sb.AppendLine("AuditId,Timestamp,AppId,CallerId,AuthType,KeyPrefix,ClientIp,Route,Model,Provider,InputGuardrails,OutputGuardrails,TokensTotal,LatencyMs,StatusCode,Success,PreviousHash,EntryHash,ErrorMessage");
 
         foreach (var r in result.Records)
         {
@@ -184,6 +245,8 @@ public class AuditLogService : IAuditLogService, IAsyncDisposable
                 r.LatencyMs,
                 r.StatusCode,
                 r.Success ? "true" : "false",
+                EscapeCsv(r.PreviousHash),
+                EscapeCsv(r.EntryHash),
                 EscapeCsv(r.ErrorMessage ?? "")
             ));
         }

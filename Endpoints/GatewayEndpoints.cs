@@ -175,6 +175,22 @@ public static class GatewayEndpoints
                 }, statusCode: StatusCodes.Status401Unauthorized);
             }
 
+            // Financial Circuit Breaker (Daily Spend Budget)
+            var (spendAllowed, currentSpend, budgetLimit) = await registryService.CheckDailySpendBudgetAsync(appId, ct);
+            if (!spendAllowed)
+            {
+                return Results.Json(new UniversalResponse
+                {
+                    Output = string.Empty,
+                    AppId = appId,
+                    Error = new GatewayError
+                    {
+                        Code = "SPEND_BUDGET_EXCEEDED",
+                        Message = $"Application daily spend budget exceeded: ${currentSpend:F4} spent today against budget limit of ${budgetLimit:F2}."
+                    }
+                }, statusCode: StatusCodes.Status429TooManyRequests);
+            }
+
             // Abuse & Size Clamps
             var securityOpts = options.Value.Security;
             if (request.Input != null && request.Input.Length > securityOpts.MaxInputCharacters)
@@ -212,6 +228,7 @@ public static class GatewayEndpoints
         .Produces<UniversalResponse>(StatusCodes.Status401Unauthorized)
         .Produces<UniversalResponse>(StatusCodes.Status413PayloadTooLarge)
         .Produces<UniversalResponse>(StatusCodes.Status422UnprocessableEntity)
+        .Produces<UniversalResponse>(StatusCodes.Status429TooManyRequests)
         .Produces<UniversalResponse>(StatusCodes.Status404NotFound);
 
         // Universal direct endpoint for admin/orchestrators (Accepts Admin Master API Key OR Admin STS Token)

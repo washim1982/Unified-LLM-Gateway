@@ -1,4 +1,6 @@
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.OpenApi.Models;
 using Polly;
 using Polly.Extensions.Http;
@@ -50,15 +52,47 @@ builder.Services.AddHttpClient("LlamaCppClient", client =>
 // 4. Core Gateway Services Registration
 builder.Services.AddSingleton<ISecurityService, SecurityService>();
 builder.Services.AddSingleton<IGuardrailService, GuardrailService>();
+builder.Services.AddSingleton<ISTSService, STSService>();
+builder.Services.AddSingleton<IKmsCryptoService, KmsCryptoService>();
+builder.Services.AddSingleton<IS3ArchiveService, S3ArchiveService>();
 builder.Services.AddSingleton<IAuditLogService, AuditLogService>();
 builder.Services.AddSingleton<IPrometheusMetricsService, PrometheusMetricsService>();
-builder.Services.AddSingleton<ISTSService, STSService>();
 builder.Services.AddSingleton<IBedrockService, BedrockService>();
 builder.Services.AddSingleton<ILocalModelService, LocalModelService>();
 builder.Services.AddSingleton<IApplicationRegistryService, ApplicationRegistryService>();
 builder.Services.AddSingleton<IModelRouter, ModelRouter>();
 
-// 5. Background Services
+// 5. Sliding-Window Rate Limiting (Per-Client IP & Application ID)
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, token) =>
+    {
+        context.HttpContext.Response.ContentType = "application/json";
+        await context.HttpContext.Response.WriteAsync(
+            "{\"error\":\"RATE_LIMIT_EXCEEDED\",\"message\":\"Too many requests. Please slow down.\",\"status\":429}",
+            cancellationToken: token);
+    };
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+    {
+        var clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var appId = httpContext.Request.RouteValues.TryGetValue("appId", out var val) ? val?.ToString() : null;
+        var partitionKey = string.IsNullOrEmpty(appId) ? clientIp : $"{appId}_{clientIp}";
+
+        return RateLimitPartition.GetSlidingWindowLimiter(
+            partitionKey,
+            key => new SlidingWindowRateLimiterOptions
+            {
+                PermitLimit = gatewayOptions.Security.RateLimitPerMinute > 0 ? gatewayOptions.Security.RateLimitPerMinute : 120,
+                Window = TimeSpan.FromMinutes(1),
+                SegmentsPerWindow = 6,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            });
+    });
+});
+
+// 6. Background Services
 builder.Services.AddHostedService<AwsCredentialBackgroundService>();
 
 // 6. CORS Policy
@@ -120,8 +154,27 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
+// 7. Production Security Posture Validation
+if (app.Environment.IsProduction() && (string.IsNullOrWhiteSpace(gatewayOptions.Security.AdminApiKey) || gatewayOptions.Security.AdminApiKey.Contains("dev-admin-master-key")))
+{
+    throw new InvalidOperationException("CRITICAL SECURITY VIOLATION: Gateway is running in Production environment with default or missing AdminApiKey. Configure Gateway:Security:AdminApiKey with a strong secret before starting in production.");
+}
+
 // 8. Middleware Pipeline
+// Enterprise Security Headers
+app.Use(async (context, next) =>
+{
+    context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
+    context.Response.Headers.Append("X-Frame-Options", "DENY");
+    context.Response.Headers.Append("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+    context.Response.Headers.Append("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:;");
+    context.Response.Headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");
+    context.Response.Headers.Append("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    await next();
+});
+
 app.UseCors("GatewayCorsPolicy");
+app.UseRateLimiter();
 
 if (app.Environment.IsDevelopment() || app.Environment.IsStaging() || app.Environment.IsEnvironment("Test"))
 {

@@ -69,6 +69,13 @@ public record AuditLogRecord
 
     [JsonPropertyName("errorMessage")]
     public string? ErrorMessage { get; init; }
+
+    // Cryptographic Hash-Chaining for WORM / Tamper-Evident Audit Compliance (SOC 2, PCI-DSS)
+    [JsonPropertyName("previousHash")]
+    public string PreviousHash { get; init; } = "GENESIS";
+
+    [JsonPropertyName("entryHash")]
+    public string EntryHash { get; set; } = string.Empty;
 }
 
 /// <summary>
