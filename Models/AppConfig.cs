@@ -70,7 +70,7 @@ public record AppConfig
 
     // Real-Time Spend Budget Circuit Breaker (LLM04 Anti-DoS)
     [JsonPropertyName("maxDailySpendUsd")]
-    public decimal MaxDailySpendUsd { get; init; } = 0m;
+    public decimal? MaxDailySpendUsd { get; init; }
 
     [JsonPropertyName("version")]
     public int Version { get; init; } = 1;
@@ -118,7 +118,7 @@ public record AppConfigSnapshot
     public double OutputCostPerMillion { get; init; }
 
     [JsonPropertyName("maxDailySpendUsd")]
-    public decimal MaxDailySpendUsd { get; init; } = 0m;
+    public decimal? MaxDailySpendUsd { get; init; }
 
     [JsonPropertyName("savedAt")]
     public DateTimeOffset SavedAt { get; init; }

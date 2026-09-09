@@ -185,7 +185,7 @@ public class ApplicationRegistryService : IApplicationRegistryService
             AllowedCidrs = request.AllowedCidrs ?? [],
             InputCostPerMillion = request.InputCostPerMillion,
             OutputCostPerMillion = request.OutputCostPerMillion,
-            MaxDailySpendUsd = request.MaxDailySpendUsd ?? 0m,
+            MaxDailySpendUsd = request.MaxDailySpendUsd,
             Version = 1,
             IsActive = true,
             CreatedAt = DateTimeOffset.UtcNow,
@@ -847,12 +847,12 @@ public class ApplicationRegistryService : IApplicationRegistryService
             return Task.FromResult((true, 0m, 0m));
         }
 
-        if (!app.MaxDailySpendUsd.HasValue || app.MaxDailySpendUsd.Value <= 0)
+        var limit = app.MaxDailySpendUsd ?? 0m;
+        if (limit <= 0m)
         {
             return Task.FromResult((true, 0m, 0m));
         }
 
-        var limit = app.MaxDailySpendUsd.Value;
         var todayUtc = DateTimeOffset.UtcNow.Date;
 
         var todayLogs = _recentLogs
