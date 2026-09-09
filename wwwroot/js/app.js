@@ -57,6 +57,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function parseJwt(token) {
+    try {
+      const parts = token.split('.');
+      if (parts.length !== 3) return null;
+      const header = JSON.parse(atob(parts[0].replace(/-/g, '+').replace(/_/g, '/')));
+      const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+      return { header, payload };
+    } catch (e) {
+      return null;
+    }
+  }
+
   function updateOktaUi() {
     if (!currentOktaProfile) return;
     const isAdmin = currentOktaProfile.isAdmin;
@@ -73,6 +85,59 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.app-admin-only').forEach(el => {
       el.style.display = isAdmin ? 'inline-flex' : 'none';
     });
+
+    // Update #pane-okta tab elements
+    const heroAvatar = document.getElementById('okta-hero-avatar');
+    const heroName = document.getElementById('okta-hero-name');
+    const heroEmail = document.getElementById('okta-hero-email');
+    const heroSub = document.getElementById('okta-hero-sub');
+    const heroBadge = document.getElementById('okta-hero-role-badge');
+    const rbacGroupBadge = document.getElementById('okta-rbac-active-group-badge');
+
+    if (heroAvatar) {
+      heroAvatar.textContent = isAdmin ? 'WK' : 'DU';
+      heroAvatar.style.background = isAdmin ? '#0284c7' : '#475569';
+    }
+    if (heroName) heroName.textContent = currentOktaProfile.fullName || (isAdmin ? 'Wasim Khan' : 'Developer User');
+    if (heroEmail) heroEmail.textContent = currentOktaProfile.email;
+    if (heroSub) heroSub.textContent = currentOktaProfile.userId || (isAdmin ? '00u_admin_wasim' : '00u_dev_user');
+    if (heroBadge) {
+      heroBadge.textContent = isAdmin ? 'UnifiedGateway-Admins' : 'UnifiedGateway-Developers';
+      heroBadge.className = `badge ${isAdmin ? 'badge-admin' : 'badge-dev'}`;
+    }
+    if (rbacGroupBadge) {
+      rbacGroupBadge.textContent = isAdmin ? 'Admin Mode (All Privileges)' : 'Developer Mode (Read/Test Only)';
+      rbacGroupBadge.className = `badge ${isAdmin ? 'badge-admin' : 'badge-dev'}`;
+    }
+
+    // Update permission table status cells
+    const allowedHtml = '<span style="color:#34d399; font-weight:600;">✓ Allowed</span>';
+    const blockedHtml = '<span style="color:#f87171; font-weight:600;">✗ Blocked (403 Forbidden - Admin Only)</span>';
+
+    const pCreate = document.getElementById('perm-create-status');
+    const pDelete = document.getElementById('perm-delete-status');
+    const pRotate = document.getElementById('perm-rotate-status');
+    const pUniv = document.getElementById('perm-universal-status');
+    const pGuard = document.getElementById('perm-guardrail-status');
+
+    if (pCreate) pCreate.innerHTML = isAdmin ? allowedHtml : blockedHtml;
+    if (pDelete) pDelete.innerHTML = isAdmin ? allowedHtml : blockedHtml;
+    if (pRotate) pRotate.innerHTML = isAdmin ? allowedHtml : blockedHtml;
+    if (pUniv) pUniv.innerHTML = isAdmin ? allowedHtml : blockedHtml;
+    if (pGuard) pGuard.innerHTML = isAdmin ? allowedHtml : blockedHtml;
+
+    // Decode and display JWT tokens
+    if (currentOktaToken) {
+      const decoded = parseJwt(currentOktaToken);
+      const headerElem = document.getElementById('okta-decoded-header');
+      const payloadElem = document.getElementById('okta-decoded-payload');
+      if (headerElem && decoded) {
+        headerElem.textContent = JSON.stringify(decoded.header, null, 2);
+      }
+      if (payloadElem && decoded) {
+        payloadElem.textContent = JSON.stringify(decoded.payload, null, 2);
+      }
+    }
   }
 
   if (oktaUserSelect) {
@@ -82,6 +147,153 @@ document.addEventListener('DOMContentLoaded', () => {
       await loadApps();
     });
   }
+
+  // Okta Login Modal Screen Elements & Listeners
+  const oktaLoginModal = document.getElementById('okta-login-modal');
+  const btnOpenOktaModal = document.getElementById('btn-open-okta-modal');
+  const btnSwitchOktaUser = document.getElementById('btn-switch-okta-user');
+  const btnCloseOktaModal = document.getElementById('btn-close-okta-modal');
+  const cardPickAdmin = document.getElementById('card-pick-admin');
+  const cardPickDev = document.getElementById('card-pick-dev');
+  const oktaModalEmailInput = document.getElementById('okta-modal-email-input');
+  const oktaModalLoginForm = document.getElementById('okta-modal-login-form');
+  const btnCopyOktaRawJwt = document.getElementById('btn-copy-okta-raw-jwt');
+
+  if (btnOpenOktaModal) {
+    btnOpenOktaModal.addEventListener('click', () => {
+      if (oktaLoginModal) oktaLoginModal.classList.add('active');
+    });
+  }
+  if (btnSwitchOktaUser) {
+    btnSwitchOktaUser.addEventListener('click', () => {
+      if (oktaLoginModal) oktaLoginModal.classList.add('active');
+    });
+  }
+  if (btnCloseOktaModal) {
+    btnCloseOktaModal.addEventListener('click', () => {
+      if (oktaLoginModal) oktaLoginModal.classList.remove('active');
+    });
+  }
+
+  if (cardPickAdmin) {
+    cardPickAdmin.addEventListener('click', () => {
+      cardPickAdmin.classList.add('active');
+      cardPickAdmin.style.borderColor = '#0284c7';
+      cardPickAdmin.style.background = 'rgba(2, 132, 199, 0.12)';
+      if (cardPickDev) {
+        cardPickDev.classList.remove('active');
+        cardPickDev.style.borderColor = 'var(--border-color)';
+        cardPickDev.style.background = 'rgba(255, 255, 255, 0.02)';
+      }
+      if (oktaModalEmailInput) oktaModalEmailInput.value = 'wasim.khan@gmail.com';
+    });
+  }
+
+  if (cardPickDev) {
+    cardPickDev.addEventListener('click', () => {
+      cardPickDev.classList.add('active');
+      cardPickDev.style.borderColor = '#0284c7';
+      cardPickDev.style.background = 'rgba(2, 132, 199, 0.12)';
+      if (cardPickAdmin) {
+        cardPickAdmin.classList.remove('active');
+        cardPickAdmin.style.borderColor = 'var(--border-color)';
+        cardPickAdmin.style.background = 'rgba(255, 255, 255, 0.02)';
+      }
+      if (oktaModalEmailInput) oktaModalEmailInput.value = 'dev-user@gmail.com';
+    });
+  }
+
+  if (oktaModalLoginForm) {
+    oktaModalLoginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = oktaModalEmailInput.value;
+      await loginOktaUser(email);
+      if (oktaLoginModal) oktaLoginModal.classList.remove('active');
+      await loadApps();
+      showFinopsToast(`Signed in as ${email}`);
+    });
+  }
+
+  if (btnCopyOktaRawJwt) {
+    btnCopyOktaRawJwt.addEventListener('click', () => {
+      if (currentOktaToken) {
+        navigator.clipboard.writeText(currentOktaToken);
+        alert('Okta Bearer JWT copied to clipboard!');
+      }
+    });
+  }
+
+  window.testOktaPermission = async (action) => {
+    const resBox = document.getElementById('okta-live-test-result');
+    const resTitle = document.getElementById('okta-test-result-title');
+    const resBody = document.getElementById('okta-test-result-body');
+    if (!resBox) return;
+
+    resBox.style.display = 'block';
+    resTitle.textContent = `Testing '${action}' with active token (${currentOktaUser})...`;
+    resBody.textContent = 'Executing request to API...';
+
+    try {
+      let res;
+      if (action === 'create-app') {
+        res = await fetch('/api/apps', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ appId: 'test-demo-app', name: 'Demo App' })
+        });
+      } else if (action === 'delete-app') {
+        res = await fetch('/api/apps/non-existent-test-app', { method: 'DELETE' });
+      } else if (action === 'rotate-key') {
+        res = await fetch('/api/apps/customer-support-agent/rotate-key', { method: 'POST' });
+      } else if (action === 'universal-invoke') {
+        res = await fetch('/gateway/universal/invoke', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider: 'local', model: 'ollama/llama3', prompt: 'ping' })
+        });
+      } else if (action === 'guardrail-config') {
+        res = await fetch('/api/guardrails/config', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: true })
+        });
+      } else if (action === 'test-app') {
+        res = await fetch('/api/apps/customer-support-agent/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ input: 'hello' })
+        });
+      } else if (action === 'view-apps') {
+        res = await fetch('/api/apps');
+      }
+
+      const status = res.status;
+      const statusText = res.statusText;
+      let text;
+      try {
+        const json = await res.json();
+        text = JSON.stringify(json, null, 2);
+      } catch {
+        text = await res.text();
+      }
+
+      if (status === 200 || status === 201 || status === 204 || status === 404) {
+        resTitle.innerHTML = `<span style="color:#34d399;">✓ HTTP ${status} ${statusText}</span> - Operation Allowed for your role!`;
+        resBox.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+      } else if (status === 403) {
+        resTitle.innerHTML = `<span style="color:#f87171;">✗ HTTP 403 Forbidden</span> - Operation strictly blocked by Okta AD group authorization!`;
+        resBox.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+      } else {
+        resTitle.innerHTML = `HTTP ${status} ${statusText}`;
+        resBox.style.borderColor = 'var(--border-color)';
+      }
+
+      resBody.textContent = `Status: ${status} ${statusText}\n\nResponse:\n${text}`;
+    } catch (e) {
+      resTitle.textContent = `Test Error: ${e.message}`;
+      resBody.textContent = e.stack || e.message;
+    }
+  };
 
   // DOM Elements
   const navButtons = document.querySelectorAll('.nav-btn');

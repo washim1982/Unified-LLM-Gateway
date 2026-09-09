@@ -50,6 +50,13 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/><line x1="7" y1="15" x2="11" y2="15"/></svg>
           Billing & Costs
         </button>
+        <button class="nav-btn" data-tab="okta">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 8v8M8 12h8"/>
+          </svg>
+          Okta & AD Security
+        </button>
       </nav>
 
       <div class="sidebar-footer">
@@ -91,6 +98,11 @@
               </select>
             </div>
           </div>
+
+          <button class="btn btn-outline" id="btn-open-okta-modal" style="border-color:#0284c7; color:#38bdf8; gap:6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
+            Okta SSO Login
+          </button>
 
           <button class="btn btn-outline" id="btn-refresh-status">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
@@ -699,6 +711,148 @@
           </div>
         </div>
       </section>
+
+      <!-- TAB 7: Simulated Okta & Active Directory Security -->
+      <section class="tab-pane" id="pane-okta">
+        <!-- 1. Hero Identity Banner -->
+        <div class="card" style="margin-bottom:20px; border-left: 4px solid #0284c7; background: linear-gradient(135deg, rgba(2, 132, 199, 0.08) 0%, rgba(30, 33, 40, 0.6) 100%);">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+            <div style="display:flex; align-items:center; gap:16px;">
+              <div style="width:52px; height:52px; border-radius:50%; background:#0284c7; display:flex; align-items:center; justify-content:center; font-size:20px; color:#fff; font-weight:700;" id="okta-hero-avatar">
+                WK
+              </div>
+              <div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <h2 style="margin:0; font-size:20px; color:#fff;" id="okta-hero-name">Wasim Khan</h2>
+                  <span class="badge badge-admin" id="okta-hero-role-badge">UnifiedGateway-Admins</span>
+                  <span class="badge" style="background:rgba(16, 185, 129, 0.2); color:#34d399; border:1px solid rgba(16, 185, 129, 0.3);">Okta SSO Authenticated</span>
+                </div>
+                <div style="margin-top:4px; font-size:13px; color:var(--text-muted);">
+                  User Principal: <code id="okta-hero-email" style="color:#38bdf8;">wasim.khan@gmail.com</code> &bull; Subject ID: <code id="okta-hero-sub">00u_admin_wasim</code> &bull; IdP Issuer: <code>https://dev-okta-simulator.okta.com/oauth2/default</code>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; gap:10px;">
+              <button class="btn btn-primary" id="btn-switch-okta-user" style="background:#0284c7; border-color:#0284c7;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>
+                Switch Identity / Sign In
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Two-Column Layout: RBAC Matrix & Token Inspector -->
+        <div class="generator-layout">
+          <!-- Left Column: Active Directory RBAC Matrix & Live Enforcement Tester -->
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+              <div>
+                <h3 style="margin:0;">Active Directory RBAC Enforcement</h3>
+                <p class="subtitle" style="margin:4px 0 0;">Gateway dynamically enforces group membership extracted from Okta JWT claims.</p>
+              </div>
+              <span class="badge" id="okta-rbac-active-group-badge" style="background:rgba(239, 68, 68, 0.2); color:#f87171;">Admin Mode</span>
+            </div>
+
+            <div class="table-responsive">
+              <table class="table" style="font-size:13px;">
+                <thead>
+                  <tr>
+                    <th>Protected Gateway Operation</th>
+                    <th>Required AD Group</th>
+                    <th>Your Access</th>
+                    <th>Live Test</th>
+                  </tr>
+                </thead>
+                <tbody id="okta-rbac-table-body">
+                  <tr>
+                    <td><strong>Create / Register New App</strong><br><small style="color:var(--text-muted);">POST /api/apps</small></td>
+                    <td><span class="badge badge-admin">UnifiedGateway-Admins</span></td>
+                    <td id="perm-create-status"><span style="color:#34d399;">✓ Allowed</span></td>
+                    <td><button class="btn btn-outline btn-xs" onclick="testOktaPermission('create-app')">Test API</button></td>
+                  </tr>
+                  <tr>
+                    <td><strong>Delete Registered App</strong><br><small style="color:var(--text-muted);">DELETE /api/apps/{id}</small></td>
+                    <td><span class="badge badge-admin">UnifiedGateway-Admins</span></td>
+                    <td id="perm-delete-status"><span style="color:#34d399;">✓ Allowed</span></td>
+                    <td><button class="btn btn-outline btn-xs" onclick="testOktaPermission('delete-app')">Test API</button></td>
+                  </tr>
+                  <tr>
+                    <td><strong>Rotate / Revoke API Keys</strong><br><small style="color:var(--text-muted);">POST /api/apps/{id}/rotate-key</small></td>
+                    <td><span class="badge badge-admin">UnifiedGateway-Admins</span></td>
+                    <td id="perm-rotate-status"><span style="color:#34d399;">✓ Allowed</span></td>
+                    <td><button class="btn btn-outline btn-xs" onclick="testOktaPermission('rotate-key')">Test API</button></td>
+                  </tr>
+                  <tr>
+                    <td><strong>Universal Direct Router</strong><br><small style="color:var(--text-muted);">POST /gateway/universal/invoke</small></td>
+                    <td><span class="badge badge-admin">UnifiedGateway-Admins</span></td>
+                    <td id="perm-universal-status"><span style="color:#34d399;">✓ Allowed</span></td>
+                    <td><button class="btn btn-outline btn-xs" onclick="testOktaPermission('universal-invoke')">Test API</button></td>
+                  </tr>
+                  <tr>
+                    <td><strong>Enterprise Guardrail Policy</strong><br><small style="color:var(--text-muted);">PUT /api/guardrails/config</small></td>
+                    <td><span class="badge badge-admin">UnifiedGateway-Admins</span></td>
+                    <td id="perm-guardrail-status"><span style="color:#34d399;">✓ Allowed</span></td>
+                    <td><button class="btn btn-outline btn-xs" onclick="testOktaPermission('guardrail-config')">Test API</button></td>
+                  </tr>
+                  <tr>
+                    <td><strong>Interactive Model Tester</strong><br><small style="color:var(--text-muted);">POST /api/apps/{id}/test</small></td>
+                    <td><span class="badge badge-dev">UnifiedGateway-Developers</span></td>
+                    <td><span style="color:#34d399;">✓ Allowed</span></td>
+                    <td><button class="btn btn-outline btn-xs" onclick="testOktaPermission('test-app')">Test API</button></td>
+                  </tr>
+                  <tr>
+                    <td><strong>View Dashboard &amp; Apps</strong><br><small style="color:var(--text-muted);">GET /api/apps, GET /api/billing</small></td>
+                    <td><span class="badge badge-dev">UnifiedGateway-Developers</span></td>
+                    <td><span style="color:#34d399;">✓ Allowed</span></td>
+                    <td><button class="btn btn-outline btn-xs" onclick="testOktaPermission('view-apps')">Test API</button></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div id="okta-live-test-result" style="display:none; margin-top:14px; padding:12px; border-radius:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border-color);">
+              <div style="font-weight:600; font-size:12px; margin-bottom:4px;" id="okta-test-result-title">Live Test Response:</div>
+              <pre id="okta-test-result-body" style="font-family:'JetBrains Mono', monospace; font-size:11px; margin:0; white-space:pre-wrap;"></pre>
+            </div>
+          </div>
+
+          <!-- Right Column: Live Decoded Okta JWT Inspector -->
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <h3 style="margin:0;">Decoded Okta JWT Bearer Token</h3>
+              <button class="btn btn-outline btn-sm" id="btn-copy-okta-raw-jwt">Copy Raw Token</button>
+            </div>
+            <p class="subtitle" style="margin:0 0 12px;">Validates HMAC-SHA256 signature, expiration, issuer, audience, and AD group claims.</p>
+
+            <div style="margin-bottom:12px;">
+              <label style="font-size:11px; color:var(--text-muted); font-weight:600; text-transform:uppercase;">JOSE Header (Base64Url Decoded):</label>
+              <pre class="code-block" style="margin-top:4px; max-height:100px; padding:10px;"><code id="okta-decoded-header"></code></pre>
+            </div>
+
+            <div style="margin-bottom:12px;">
+              <label style="font-size:11px; color:var(--text-muted); font-weight:600; text-transform:uppercase;">JWT Payload Claims (Decoded):</label>
+              <pre class="code-block" style="margin-top:4px; max-height:220px; padding:10px;"><code id="okta-decoded-payload"></code></pre>
+            </div>
+
+            <div style="display:flex; gap:10px; align-items:center; padding:10px 12px; background:rgba(16, 185, 129, 0.08); border:1px solid rgba(16, 185, 129, 0.3); border-radius:8px;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+              <div style="font-size:12px; color:#34d399;">
+                <strong>Cryptographically Verified:</strong> Signature matches gateway signing key; claims issued by <code>https://dev-okta-simulator.okta.com</code>.
+              </div>
+            </div>
+
+            <!-- OIDC Discovery Simulation Quick Links -->
+            <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--border-color); font-size:12px;">
+              <span style="color:var(--text-muted); font-weight:600;">OIDC Discovery Endpoints:</span>
+              <div style="display:flex; gap:12px; margin-top:6px; flex-wrap:wrap;">
+                <a href="/api/auth/me" target="_blank" style="color:#38bdf8; text-decoration:underline;">/api/auth/me</a>
+                <a href="/api/auth/users" target="_blank" style="color:#38bdf8; text-decoration:underline;">/api/auth/users</a>
+                <a href="/.well-known/openid-configuration" target="_blank" style="color:#38bdf8; text-decoration:underline;">/.well-known/openid-configuration</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
 
@@ -1030,6 +1184,74 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=2.3"></script>
+  <!-- Okta Login Modal Screen -->
+  <div class="modal-backdrop" id="okta-login-modal">
+    <div class="modal okta-login-modal-content" style="max-width:480px; padding:0; overflow:hidden; border:1px solid #0284c7; box-shadow: 0 10px 35px rgba(2, 132, 199, 0.25);">
+      <div class="okta-login-header" style="background:#0f172a; padding:18px 24px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div style="width:34px; height:34px; border-radius:50%; background:#0284c7; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:900; font-size:16px;">
+            O
+          </div>
+          <div>
+            <h3 style="margin:0; font-size:17px; color:#fff; font-weight:700; letter-spacing:0.5px;">okta</h3>
+            <span style="font-size:11px; color:#94a3b8;">Unified Gateway Single Sign-On</span>
+          </div>
+        </div>
+        <button class="close-btn" id="btn-close-okta-modal">&times;</button>
+      </div>
+
+      <div class="modal-body" style="padding:22px 24px;">
+        <h4 style="margin:0 0 4px; font-size:16px; color:#f8fafc;">Sign In with Okta Identity</h4>
+        <p style="margin:0 0 16px; font-size:12px; color:#94a3b8;">Select your persona to issue a cryptographically signed Okta JWT with Active Directory groups:</p>
+
+        <!-- 1-Click Identity Selector Cards -->
+        <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:16px;">
+          <div class="okta-account-card active" id="card-pick-admin" style="cursor:pointer; padding:12px 14px; border:2px solid #0284c7; background:rgba(2, 132, 199, 0.12); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <div style="width:36px; height:36px; border-radius:50%; background:#0284c7; color:#fff; font-weight:700; display:flex; align-items:center; justify-content:center; font-size:13px;">WK</div>
+              <div>
+                <strong style="color:#f8fafc; font-size:13px; display:block;">Wasim Khan (Admin)</strong>
+                <span style="color:#94a3b8; font-size:12px;">wasim.khan@gmail.com</span>
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <span class="badge badge-admin" style="display:inline-block;">UnifiedGateway-Admins</span>
+              <div style="font-size:10px; color:#34d399; margin-top:2px;">Full Admin Rights</div>
+            </div>
+          </div>
+
+          <div class="okta-account-card" id="card-pick-dev" style="cursor:pointer; padding:12px 14px; border:1px solid var(--border-color); background:rgba(255, 255, 255, 0.02); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <div style="width:36px; height:36px; border-radius:50%; background:#475569; color:#fff; font-weight:700; display:flex; align-items:center; justify-content:center; font-size:13px;">DU</div>
+              <div>
+                <strong style="color:#f8fafc; font-size:13px; display:block;">Developer User</strong>
+                <span style="color:#94a3b8; font-size:12px;">dev-user@gmail.com</span>
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <span class="badge badge-dev" style="display:inline-block;">UnifiedGateway-Developers</span>
+              <div style="font-size:10px; color:#60a5fa; margin-top:2px;">Test API &amp; Dashboard Only</div>
+            </div>
+          </div>
+        </div>
+
+        <form id="okta-modal-login-form">
+          <div class="form-group" style="margin-bottom:12px;">
+            <label style="font-size:12px;">Identity Email</label>
+            <input type="email" id="okta-modal-email-input" class="form-control" value="wasim.khan@gmail.com" required readonly style="background:#1e2128;">
+          </div>
+          <div class="form-group" style="margin-bottom:16px;">
+            <label style="font-size:12px;">Simulated Okta Password</label>
+            <input type="password" id="okta-modal-password-input" class="form-control" value="OktaSimulation2026!" placeholder="Password">
+          </div>
+          <button type="submit" class="btn btn-primary btn-block" id="btn-okta-modal-submit" style="background:#0284c7; border-color:#0284c7; padding:10px; font-weight:600; font-size:14px;">
+            Sign In with Okta SSO
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/app.js?v=2.4"></script>
 </body>
 </html>

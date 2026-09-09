@@ -91,7 +91,8 @@ public class MultiEnvironmentTests
         mockSecurityService.Setup(s => s.MaskSecret(It.IsAny<string>(), It.IsAny<int>()))
             .Returns<string, int>((secret, visible) => $"{secret[..Math.Min(visible, secret.Length)]}***");
 
-        var stsService = new STSService(options, mockSecurityService.Object, NullLogger<STSService>.Instance);
+        var mockHttpClientFactory = new Mock<IHttpClientFactory>();
+        var stsService = new STSService(options, mockSecurityService.Object, mockHttpClientFactory.Object, NullLogger<STSService>.Instance);
 
         var status = await stsService.GetStatusAsync();
 
